@@ -38,3 +38,7 @@ Server MVP for centralized employee activity monitoring.
 ```
 
 Send it with header `X-API-Key: <INGEST_API_KEY>`.
+
+## Windows client
+
+See [agent/windows/README.md](agent/windows/README.md) for the semi-automated Windows client installer and sync agent.
