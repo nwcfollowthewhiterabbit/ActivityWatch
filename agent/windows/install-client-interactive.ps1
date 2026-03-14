@@ -1,21 +1,10 @@
 param(
     [string]$ServerUrl = "https://tt.greenleafpacific.com",
     [string]$ApiKey = "",
-    [string]$PythonCommand = "py -3",
     [int]$LookbackMinutes = 10
 )
 
 $ErrorActionPreference = "Stop"
-
-function Test-CommandAvailable {
-    param([string]$Command)
-    try {
-        Get-Command $Command -ErrorAction Stop | Out-Null
-        return $true
-    } catch {
-        return $false
-    }
-}
 
 function Test-ActivityWatch {
     try {
@@ -36,7 +25,6 @@ function Ensure-Admin {
             "-ExecutionPolicy", "Bypass"
             "-File", "`"$PSCommandPath`""
             "-ServerUrl", "`"$ServerUrl`""
-            "-PythonCommand", "`"$PythonCommand`""
             "-LookbackMinutes", "$LookbackMinutes"
         )
         if ($ApiKey) {
@@ -53,19 +41,6 @@ Write-Host ""
 Write-Host "Company Monitor client installer"
 Write-Host "Server: $ServerUrl"
 Write-Host ""
-
-if (-not (Test-CommandAvailable "py")) {
-    Write-Warning "Python launcher 'py' not found. Install Python 3 first, then rerun this installer."
-    exit 1
-}
-
-try {
-    $pythonVersion = & py -3 --version 2>&1
-    Write-Host "Python detected: $pythonVersion"
-} catch {
-    Write-Warning "Python 3 is not available through 'py -3'."
-    exit 1
-}
 
 if (-not (Test-ActivityWatch)) {
     Write-Warning "ActivityWatch local API is not reachable on http://127.0.0.1:5600."
@@ -108,7 +83,6 @@ if (-not (Test-Path $installScript)) {
     -DeviceLabel $deviceLabel `
     -ApiKey $ApiKey `
     -ServerUrl $ServerUrl `
-    -PythonCommand $PythonCommand `
     -LookbackMinutes $LookbackMinutes
 
 Write-Host ""
