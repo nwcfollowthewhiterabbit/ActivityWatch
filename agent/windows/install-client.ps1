@@ -29,7 +29,7 @@ $config = @{
     api_key = $ApiKey
     device_id = $DeviceId
     device_label = $DeviceLabel
-    activitywatch_url = "http://127.0.0.1:5600/api/0"
+    activitywatch_url = "http://localhost:5600/api/0"
     lookback_minutes = $LookbackMinutes
 }
 $config | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 $configPath

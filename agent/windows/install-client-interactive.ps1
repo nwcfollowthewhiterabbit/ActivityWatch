@@ -7,12 +7,27 @@ param(
 $ErrorActionPreference = "Stop"
 
 function Test-ActivityWatch {
-    try {
-        $response = Invoke-WebRequest -Uri "http://127.0.0.1:5600/api/0/buckets" -UseBasicParsing -TimeoutSec 5
-        return $response.StatusCode -ge 200 -and $response.StatusCode -lt 500
-    } catch {
-        return $false
+    $candidates = @(
+        "http://localhost:5600/api/0/buckets/",
+        "http://127.0.0.1:5600/api/0/buckets/",
+        "http://localhost:5600/api/0/buckets",
+        "http://127.0.0.1:5600/api/0/buckets",
+        "http://localhost:5600",
+        "http://127.0.0.1:5600"
+    )
+
+    foreach ($uri in $candidates) {
+        try {
+            $response = Invoke-WebRequest -Uri $uri -UseBasicParsing -TimeoutSec 5
+            if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) {
+                return $true
+            }
+        } catch {
+            continue
+        }
     }
+
+    return $false
 }
 
 function Ensure-Admin {

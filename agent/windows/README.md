@@ -4,7 +4,7 @@ This folder contains a semi-automated Windows client installer for the Company M
 
 ## What it does
 
-- Reads local ActivityWatch data from `http://127.0.0.1:5600/api/0`
+- Reads local ActivityWatch data from `http://localhost:5600/api/0`
 - Matches `aw-watcher-window`, `aw-watcher-afk`, and `aw-watcher-web` when available
 - Sends normalized events to the central server
 - Stores local sync state in `C:\ProgramData\CompanyMonitor\state.json`
