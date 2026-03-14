@@ -133,15 +133,20 @@ function Invoke-JsonPost {
     )
 
     $json = $Body | ConvertTo-Json -Depth 10
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+    if (-not $Headers) {
+        $Headers = @{}
+    }
+    $Headers["Content-Type"] = "application/json; charset=utf-8"
 
     try {
-        return Invoke-RestMethod -Method Post -Uri $Uri -ContentType "application/json" -Headers $Headers -Body $json -TimeoutSec 30
+        return Invoke-RestMethod -Method Post -Uri $Uri -Headers $Headers -Body $bytes -TimeoutSec 30
     } catch {
         $response = $_.Exception.Response
         if ($response -and ($response.StatusCode.value__ -eq 307 -or $response.StatusCode.value__ -eq 308)) {
             $location = $response.Headers["Location"]
             if ($location) {
-                return Invoke-RestMethod -Method Post -Uri $location -ContentType "application/json" -Headers $Headers -Body $json -TimeoutSec 30
+                return Invoke-RestMethod -Method Post -Uri $location -Headers $Headers -Body $bytes -TimeoutSec 30
             }
         }
         throw

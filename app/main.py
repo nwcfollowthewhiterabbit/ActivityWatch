@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 from collections import defaultdict
 from contextlib import asynccontextmanager
@@ -237,9 +238,26 @@ def logout(request: Request):
 
 
 @app.post("/api/v1/ingest")
-def ingest_events(request: Request, payload: dict, db: Session = Depends(get_db), x_api_key: str | None = Header(default=None)):
+async def ingest_events(request: Request, db: Session = Depends(get_db), x_api_key: str | None = Header(default=None)):
     if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API key")
+
+    raw_body = await request.body()
+    decoded_body = None
+    last_error = None
+    for encoding in ("utf-8-sig", "utf-16", "utf-16-le", "utf-16-be", "latin-1"):
+        try:
+            decoded_body = raw_body.decode(encoding)
+            payload = json.loads(decoded_body)
+            break
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            last_error = exc
+            continue
+    else:
+        detail = "Invalid JSON payload"
+        if last_error:
+            detail = f"{detail}: {last_error}"
+        raise HTTPException(status_code=400, detail=detail) from last_error
 
     events = payload.get("events")
     if not isinstance(events, list) or not events:
