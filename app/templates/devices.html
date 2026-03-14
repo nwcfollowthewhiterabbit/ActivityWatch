@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Devices</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Devices</h1>
+        <p class="muted">Registered endpoints and latest contact status</p>
+      </div>
+      <div class="topbar-actions">
+        <a href="/">Dashboard</a>
+        <form method="post" action="/logout"><button type="submit" class="secondary">Logout</button></form>
+      </div>
+    </header>
+
+    <section class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Label</th>
+            <th>Device ID</th>
+            <th>Hostname</th>
+            <th>Last User</th>
+            <th>Last Seen (UTC)</th>
+            <th>Update Label</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for device in devices %}
+          <tr>
+            <td>{{ device.device_label }}</td>
+            <td>{{ device.device_id }}</td>
+            <td>{{ device.hostname or "-" }}</td>
+            <td>{{ device.last_username or "-" }}</td>
+            <td>{{ device.last_seen_at.strftime("%Y-%m-%d %H:%M") if device.last_seen_at else "-" }}</td>
+            <td>
+              <form method="post" action="/devices/{{ device.device_id }}/label" class="inline-form">
+                <input type="text" name="device_label" value="{{ device.device_label }}" required>
+                <button type="submit">Save</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </body>
+</html>

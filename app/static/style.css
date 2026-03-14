@@ -1,0 +1,155 @@
+:root {
+  --bg: #f4efe6;
+  --panel: #fffdf9;
+  --ink: #1f2933;
+  --muted: #6b7280;
+  --accent: #1f6f5f;
+  --accent-2: #d97706;
+  --border: #e7dccd;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top left, rgba(217, 119, 6, 0.12), transparent 30%),
+    radial-gradient(circle at top right, rgba(31, 111, 95, 0.12), transparent 35%),
+    var(--bg);
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.login-page {
+  display: grid;
+  place-items: center;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.topbar-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: 0 12px 40px rgba(31, 41, 51, 0.06);
+  margin-bottom: 20px;
+}
+
+.narrow {
+  width: min(420px, 100%);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.filters,
+.stack,
+.inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+}
+
+.grid {
+  display: grid;
+  gap: 20px;
+}
+
+.metrics {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.two {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+}
+
+input,
+select,
+button {
+  font: inherit;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+}
+
+button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+
+button.secondary,
+a {
+  background: transparent;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  padding: 10px 8px;
+  vertical-align: top;
+  font-size: 14px;
+}
+
+.big {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 8px 0 0;
+}
+
+.alert {
+  border: 1px solid #f3c6c6;
+  background: #fff1f1;
+  color: #9b1c1c;
+  padding: 10px 12px;
+  border-radius: 10px;
+  margin: 12px 0;
+}
+
+.wrap {
+  word-break: break-word;
+}
+
+@media (max-width: 720px) {
+  body {
+    padding: 16px;
+  }
+
+  .topbar {
+    flex-direction: column;
+  }
+}

@@ -1,0 +1,314 @@
+import hashlib
+import os
+from collections import defaultdict
+from contextlib import asynccontextmanager
+from datetime import date, datetime, timedelta, timezone
+from typing import Generator
+
+from fastapi import Depends, FastAPI, Form, Header, HTTPException, Request, status
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from sqlalchemy import Date, DateTime, Integer, String, UniqueConstraint, create_engine, func, select
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+from starlette.middleware.sessions import SessionMiddleware
+
+
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://monitor:monitor@db:5432/monitor")
+API_KEY = os.getenv("INGEST_API_KEY", "change-me")
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "change-me-too")
+SESSION_SECRET = os.getenv("SESSION_SECRET", "replace-session-secret")
+
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+templates = Jinja2Templates(directory="app/templates")
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class Device(Base):
+    __tablename__ = "devices"
+
+    device_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    device_label: Mapped[str] = mapped_column(String(255), nullable=False)
+    hostname: Mapped[str | None] = mapped_column(String(255))
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_username: Mapped[str | None] = mapped_column(String(255))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class ActivityEvent(Base):
+    __tablename__ = "activity_events"
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_activity_events_fingerprint"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    device_id: Mapped[str] = mapped_column(String(128), index=True)
+    device_label: Mapped[str] = mapped_column(String(255))
+    hostname: Mapped[str] = mapped_column(String(255))
+    username: Mapped[str] = mapped_column(String(255), index=True)
+    timestamp_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    timestamp_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    event_date: Mapped[date] = mapped_column(Date, index=True)
+    app: Mapped[str | None] = mapped_column(String(255))
+    window_title: Mapped[str | None] = mapped_column(String(2000))
+    url: Mapped[str | None] = mapped_column(String(2000))
+    is_afk: Mapped[bool] = mapped_column(default=False, index=True)
+    source: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+def get_db() -> Generator[Session, None, None]:
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def is_authenticated(request: Request) -> bool:
+    return bool(request.session.get("authenticated"))
+
+
+def require_admin(request: Request) -> None:
+    if not is_authenticated(request):
+        raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
+
+
+def parse_dt(value: str) -> datetime:
+    normalized = value.replace("Z", "+00:00")
+    dt = datetime.fromisoformat(normalized)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def event_fingerprint(payload: dict) -> str:
+    raw = "|".join(
+        [
+            payload.get("device_id", ""),
+            payload.get("username", ""),
+            payload.get("timestamp_start", ""),
+            payload.get("timestamp_end", ""),
+            payload.get("app", "") or "",
+            payload.get("window_title", "") or "",
+            payload.get("url", "") or "",
+            payload.get("source", "") or "",
+            str(payload.get("is_afk", False)),
+        ]
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    yield
+
+
+app = FastAPI(title="Company Monitor", lifespan=lifespan)
+app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, same_site="lax", https_only=False)
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+
+@app.get("/health")
+def health(db: Session = Depends(get_db)) -> dict:
+    db.execute(select(1))
+    return {"status": "ok", "utc": datetime.now(timezone.utc).isoformat()}
+
+
+@app.get("/", response_class=HTMLResponse)
+def dashboard(
+    request: Request,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    device_id: str | None = None,
+    username: str | None = None,
+    db: Session = Depends(get_db),
+):
+    require_admin(request)
+
+    today = datetime.now(timezone.utc).date()
+    date_from = datetime.fromisoformat(from_date).date() if from_date else today - timedelta(days=6)
+    date_to = datetime.fromisoformat(to_date).date() if to_date else today
+
+    base_query = select(ActivityEvent).where(ActivityEvent.event_date >= date_from, ActivityEvent.event_date <= date_to)
+    if device_id:
+        base_query = base_query.where(ActivityEvent.device_id == device_id)
+    if username:
+        base_query = base_query.where(ActivityEvent.username == username)
+
+    events = db.execute(base_query.order_by(ActivityEvent.timestamp_start.desc()).limit(5000)).scalars().all()
+
+    total_seconds = 0
+    afk_seconds = 0
+    apps: dict[str, float] = defaultdict(float)
+    sites: dict[str, float] = defaultdict(float)
+    daily: dict[str, dict[str, float]] = defaultdict(lambda: {"active": 0, "afk": 0})
+    recent_events = []
+
+    for event in events:
+        seconds = max((event.timestamp_end - event.timestamp_start).total_seconds(), 0)
+        total_seconds += seconds
+        if event.is_afk:
+            afk_seconds += seconds
+            daily[str(event.event_date)]["afk"] += seconds
+        else:
+            apps[event.app or "Unknown"] += seconds
+            if event.url:
+                sites[event.url] += seconds
+            daily[str(event.event_date)]["active"] += seconds
+        recent_events.append(event)
+
+    active_seconds = total_seconds - afk_seconds
+
+    devices = db.execute(select(Device).order_by(Device.device_label)).scalars().all()
+    usernames = db.execute(select(ActivityEvent.username).distinct().order_by(ActivityEvent.username)).scalars().all()
+
+    return templates.TemplateResponse(
+        request,
+        "dashboard.html",
+        {
+            "request": request,
+            "devices": devices,
+            "usernames": usernames,
+            "selected_device_id": device_id or "",
+            "selected_username": username or "",
+            "from_date": str(date_from),
+            "to_date": str(date_to),
+            "metrics": {
+                "total_hours": round(total_seconds / 3600, 2),
+                "active_hours": round(active_seconds / 3600, 2),
+                "afk_hours": round(afk_seconds / 3600, 2),
+                "events_count": len(events),
+            },
+            "top_apps": sorted(apps.items(), key=lambda item: item[1], reverse=True)[:15],
+            "top_sites": sorted(sites.items(), key=lambda item: item[1], reverse=True)[:15],
+            "daily": sorted(daily.items()),
+            "recent_events": recent_events[:50],
+        },
+    )
+
+
+@app.get("/devices", response_class=HTMLResponse)
+def devices_page(request: Request, db: Session = Depends(get_db)):
+    require_admin(request)
+    devices = db.execute(select(Device).order_by(Device.device_label)).scalars().all()
+    return templates.TemplateResponse(request, "devices.html", {"request": request, "devices": devices})
+
+
+@app.post("/devices/{device_id}/label")
+def update_device_label(device_id: str, request: Request, device_label: str = Form(...), db: Session = Depends(get_db)):
+    require_admin(request)
+    device = db.get(Device, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    device.device_label = device_label.strip() or device.device_id
+    db.add(device)
+    db.commit()
+    return RedirectResponse(url="/devices", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    if is_authenticated(request):
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    return templates.TemplateResponse(request, "login.html", {"request": request, "error": None})
+
+
+@app.post("/login", response_class=HTMLResponse)
+def login(request: Request, username: str = Form(...), password: str = Form(...)):
+    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+        request.session["authenticated"] = True
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    return templates.TemplateResponse(request, "login.html", {"request": request, "error": "Invalid credentials"}, status_code=401)
+
+
+@app.post("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/v1/ingest")
+def ingest_events(request: Request, payload: dict, db: Session = Depends(get_db), x_api_key: str | None = Header(default=None)):
+    if x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    events = payload.get("events")
+    if not isinstance(events, list) or not events:
+        raise HTTPException(status_code=400, detail="Payload must contain non-empty 'events' array")
+
+    inserted = 0
+    duplicated = 0
+    touched_devices: dict[str, Device] = {}
+
+    for raw_event in events:
+        required = [
+            "device_id",
+            "device_label",
+            "hostname",
+            "username",
+            "timestamp_start",
+            "timestamp_end",
+            "is_afk",
+            "source",
+        ]
+        missing = [field for field in required if field not in raw_event]
+        if missing:
+            raise HTTPException(status_code=422, detail=f"Missing fields: {', '.join(missing)}")
+
+        ts_start = parse_dt(raw_event["timestamp_start"])
+        ts_end = parse_dt(raw_event["timestamp_end"])
+        if ts_end < ts_start:
+            raise HTTPException(status_code=422, detail="timestamp_end must be greater than or equal to timestamp_start")
+
+        fingerprint = event_fingerprint(raw_event)
+        exists = db.execute(select(ActivityEvent.id).where(ActivityEvent.fingerprint == fingerprint)).scalar_one_or_none()
+        if exists:
+            duplicated += 1
+            continue
+
+        event = ActivityEvent(
+            fingerprint=fingerprint,
+            device_id=raw_event["device_id"],
+            device_label=raw_event["device_label"],
+            hostname=raw_event["hostname"],
+            username=raw_event["username"],
+            timestamp_start=ts_start,
+            timestamp_end=ts_end,
+            event_date=ts_start.date(),
+            app=raw_event.get("app"),
+            window_title=raw_event.get("window_title"),
+            url=raw_event.get("url"),
+            is_afk=bool(raw_event["is_afk"]),
+            source=raw_event.get("source"),
+        )
+        db.add(event)
+        inserted += 1
+
+        device = touched_devices.get(raw_event["device_id"]) or db.get(Device, raw_event["device_id"])
+        if not device:
+            device = Device(
+                device_id=raw_event["device_id"],
+                device_label=raw_event["device_label"],
+                hostname=raw_event["hostname"],
+                last_seen_at=ts_end,
+                last_username=raw_event["username"],
+            )
+        else:
+            device.device_label = raw_event["device_label"] or device.device_label
+            device.hostname = raw_event["hostname"] or device.hostname
+            device.last_seen_at = ts_end
+            device.last_username = raw_event["username"]
+        touched_devices[device.device_id] = device
+        db.add(device)
+
+    db.commit()
+    return {"status": "ok", "inserted": inserted, "duplicates": duplicated}

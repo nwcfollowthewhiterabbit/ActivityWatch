@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Company Monitor Login</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body class="login-page">
+    <main class="card narrow">
+      <h1>Company Monitor</h1>
+      <p class="muted">Admin dashboard login</p>
+      {% if error %}
+      <div class="alert">{{ error }}</div>
+      {% endif %}
+      <form method="post" action="/login" class="stack">
+        <label>Username <input type="text" name="username" required></label>
+        <label>Password <input type="password" name="password" required></label>
+        <button type="submit">Sign in</button>
+      </form>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Company Monitor Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Company Monitor</h1>
+        <p class="muted">Centralized employee activity dashboard</p>
+      </div>
+      <div class="topbar-actions">
+        <a href="/devices">Devices</a>
+        <form method="post" action="/logout"><button type="submit" class="secondary">Logout</button></form>
+      </div>
+    </header>
+
+    <section class="card">
+      <form method="get" action="/" class="filters">
+        <label>From <input type="date" name="from_date" value="{{ from_date }}"></label>
+        <label>To <input type="date" name="to_date" value="{{ to_date }}"></label>
+        <label>Device
+          <select name="device_id">
+            <option value="">All devices</option>
+            {% for device in devices %}
+            <option value="{{ device.device_id }}" {% if selected_device_id == device.device_id %}selected{% endif %}>
+              {{ device.device_label }} ({{ device.device_id }})
+            </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>User
+          <select name="username">
+            <option value="">All users</option>
+            {% for user in usernames %}
+            <option value="{{ user }}" {% if selected_username == user %}selected{% endif %}>{{ user }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit">Apply</button>
+      </form>
+    </section>
+
+    <section class="grid metrics">
+      <article class="card"><h2>Total time</h2><p class="big">{{ metrics.total_hours }} h</p></article>
+      <article class="card"><h2>Active time</h2><p class="big">{{ metrics.active_hours }} h</p></article>
+      <article class="card"><h2>AFK time</h2><p class="big">{{ metrics.afk_hours }} h</p></article>
+      <article class="card"><h2>Events</h2><p class="big">{{ metrics.events_count }}</p></article>
+    </section>
+
+    <section class="grid two">
+      <article class="card">
+        <h2>Top Applications</h2>
+        <table>
+          <thead><tr><th>Application</th><th>Hours</th></tr></thead>
+          <tbody>
+            {% for app, seconds in top_apps %}
+            <tr><td>{{ app }}</td><td>{{ (seconds / 3600) | round(2) }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </article>
+
+      <article class="card">
+        <h2>Top Sites</h2>
+        <table>
+          <thead><tr><th>URL</th><th>Hours</th></tr></thead>
+          <tbody>
+            {% for url, seconds in top_sites %}
+            <tr><td class="wrap">{{ url }}</td><td>{{ (seconds / 3600) | round(2) }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </article>
+    </section>
+
+    <section class="grid two">
+      <article class="card">
+        <h2>Daily Summary</h2>
+        <table>
+          <thead><tr><th>Date</th><th>Active h</th><th>AFK h</th></tr></thead>
+          <tbody>
+            {% for day, values in daily %}
+            <tr>
+              <td>{{ day }}</td>
+              <td>{{ (values.active / 3600) | round(2) }}</td>
+              <td>{{ (values.afk / 3600) | round(2) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </article>
+
+      <article class="card">
+        <h2>Recent Events</h2>
+        <table>
+          <thead><tr><th>Time</th><th>User</th><th>Device</th><th>App</th></tr></thead>
+          <tbody>
+            {% for event in recent_events %}
+            <tr>
+              <td>{{ event.timestamp_start.strftime("%Y-%m-%d %H:%M") }}</td>
+              <td>{{ event.username }}</td>
+              <td>{{ event.device_label }}</td>
+              <td>{{ event.app or "Unknown" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </article>
+    </section>
+  </body>
+</html>
