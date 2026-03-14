@@ -13,7 +13,24 @@ This folder contains a semi-automated Windows client installer for the Company M
 - Stores local sync state and offline queue in `C:\ProgramData\CompanyMonitor\agent.db`
 - Writes logs to `C:\ProgramData\CompanyMonitor\agent.log`
 
-## Install on a Windows PC
+## Easiest install on a Windows PC
+
+Double-click:
+
+```text
+install-client.cmd
+```
+
+It will:
+
+- ask how the PC should be named in the dashboard
+- ask for a technical device ID
+- ask for the ingest API key
+- check that Python 3 is available
+- check that ActivityWatch is running
+- install and schedule the sync agent automatically
+
+## Manual install on a Windows PC
 
 Run PowerShell as Administrator:
 
@@ -37,9 +54,6 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 The installer registers a task named `CompanyMonitorSync`.
 
-Default triggers:
+Default schedule:
 
-- At startup
-- At logon
-
-For tighter sync you can add a repeating trigger every 1 minute in Task Scheduler.
+- every 1 minute
