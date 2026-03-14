@@ -17,13 +17,13 @@ $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $appDir = Join-Path $env:ProgramData "CompanyMonitor"
 $agentPath = Join-Path $appDir "sync_agent.ps1"
+$servicePath = Join-Path $appDir "sync_service.ps1"
 $configPath = Join-Path $appDir "config.json"
-$runnerPath = Join-Path $appDir "run-sync.ps1"
-$hiddenRunnerPath = Join-Path $appDir "run-sync-hidden.vbs"
-$taskName = "CompanyMonitorSync"
+$serviceName = "CompanyMonitorSync"
 
 New-Item -ItemType Directory -Force -Path $appDir | Out-Null
 Copy-Item -Force (Join-Path $scriptDir "sync_agent.ps1") $agentPath
+Copy-Item -Force (Join-Path $scriptDir "sync_service.ps1") $servicePath
 
 $config = @{
     server_url = $ServerUrl
@@ -35,38 +35,35 @@ $config = @{
 }
 $config | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 $configPath
 
-$runner = @"
-`$ErrorActionPreference = 'Stop'
-Set-Location '$appDir'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File '$agentPath' -ConfigPath '$configPath'
-"@
-Set-Content -Path $runnerPath -Value $runner -Encoding UTF8
-
-$hiddenRunner = @"
-Set shell = CreateObject("WScript.Shell")
-shell.Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ""$runnerPath""", 0, False
-"@
-Set-Content -Path $hiddenRunnerPath -Value $hiddenRunner -Encoding ASCII
-
-$taskCommand = "wscript.exe ""$hiddenRunnerPath"""
-cmd.exe /c "schtasks /Query /TN ""$taskName"" >nul 2>&1"
+$legacyTaskName = "CompanyMonitorSync"
+cmd.exe /c "schtasks /Query /TN ""$legacyTaskName"" >nul 2>&1"
 if ($LASTEXITCODE -eq 0) {
-    cmd.exe /c "schtasks /Delete /TN ""$taskName"" /F >nul 2>&1"
+    cmd.exe /c "schtasks /Delete /TN ""$legacyTaskName"" /F >nul 2>&1"
 }
-cmd.exe /c "schtasks /Create /SC MINUTE /MO 1 /TN ""$taskName"" /TR ""$taskCommand"" /F"
+
+cmd.exe /c "sc query ""$serviceName"" >nul 2>&1"
 if ($LASTEXITCODE -ne 0) {
-    throw "Failed to create scheduled task $taskName"
+    $binPath = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$servicePath`" -ConfigPath `"$configPath`""
+    cmd.exe /c "sc create ""$serviceName"" binPath= ""$binPath"" start= auto DisplayName= ""Company Monitor Sync"""
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to create Windows service $serviceName"
+    }
+} else {
+    cmd.exe /c "sc stop ""$serviceName"" >nul 2>&1"
 }
+
+cmd.exe /c "sc failure ""$serviceName"" reset= 86400 actions= restart/60000/restart/60000/restart/60000" >nul 2>&1
+cmd.exe /c "sc description ""$serviceName"" ""Syncs ActivityWatch data to Company Monitor server""" >nul 2>&1
 
 try {
-    & powershell -ExecutionPolicy Bypass -File $runnerPath
+    & powershell -ExecutionPolicy Bypass -File $agentPath -ConfigPath $configPath
 } catch {
     Write-Warning "Initial sync run failed: $($_.Exception.Message)"
 }
 
-cmd.exe /c "schtasks /Run /TN ""$taskName"" >nul 2>&1"
+cmd.exe /c "sc start ""$serviceName"" >nul 2>&1"
 
 Write-Host "Company Monitor client installed."
 Write-Host "Config: $configPath"
-Write-Host "Task:   $taskName"
+Write-Host "Service: $serviceName"
 Write-Host "Log:    $(Join-Path $appDir 'agent.log')"

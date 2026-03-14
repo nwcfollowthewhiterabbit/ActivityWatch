@@ -10,7 +10,8 @@ This folder contains a semi-automated Windows client installer for the Company M
 - Stores local sync state in `C:\ProgramData\CompanyMonitor\state.json`
 - Stores offline queue in `C:\ProgramData\CompanyMonitor\queue\`
 - Writes logs to `C:\ProgramData\CompanyMonitor\agent.log`
-- Uses only standard Windows tools: PowerShell + Task Scheduler
+- Writes service runner logs to `C:\ProgramData\CompanyMonitor\service.log`
+- Uses only standard Windows tools: PowerShell + Windows Service
 
 ## Easiest install on a Windows PC
 
@@ -26,7 +27,7 @@ It will:
 - ask for a technical device ID
 - ask for the ingest API key
 - check that ActivityWatch is running
-- install and schedule the sync agent automatically
+- install and start the sync service automatically
 
 ## Manual install on a Windows PC
 
@@ -43,17 +44,15 @@ Set-ExecutionPolicy -Scope Process Bypass
 ## Installed files
 
 - `C:\ProgramData\CompanyMonitor\sync_agent.ps1`
+- `C:\ProgramData\CompanyMonitor\sync_service.ps1`
 - `C:\ProgramData\CompanyMonitor\config.json`
-- `C:\ProgramData\CompanyMonitor\run-sync.ps1`
-- `C:\ProgramData\CompanyMonitor\run-sync-hidden.vbs`
 - `C:\ProgramData\CompanyMonitor\state.json`
 - `C:\ProgramData\CompanyMonitor\queue\`
 - `C:\ProgramData\CompanyMonitor\agent.log`
+- `C:\ProgramData\CompanyMonitor\service.log`
 
-## Task Scheduler
+## Windows Service
 
-The installer registers a task named `CompanyMonitorSync`.
+The installer registers a Windows service named `CompanyMonitorSync`.
 
-Default schedule:
-
-- every 1 minute
+It starts automatically with Windows and runs a sync cycle every 60 seconds.
