@@ -110,7 +110,19 @@ function Get-BestOverlapEvent {
 
 function Invoke-JsonGet {
     param([string]$Uri)
-    return Invoke-RestMethod -Method Get -Uri $Uri -TimeoutSec 20
+
+    try {
+        return Invoke-RestMethod -Method Get -Uri $Uri -TimeoutSec 20
+    } catch {
+        $response = $_.Exception.Response
+        if ($response -and ($response.StatusCode.value__ -eq 307 -or $response.StatusCode.value__ -eq 308)) {
+            $location = $response.Headers["Location"]
+            if ($location) {
+                return Invoke-RestMethod -Method Get -Uri $location -TimeoutSec 20
+            }
+        }
+        throw
+    }
 }
 
 function Invoke-JsonPost {
@@ -121,7 +133,19 @@ function Invoke-JsonPost {
     )
 
     $json = $Body | ConvertTo-Json -Depth 10
-    return Invoke-RestMethod -Method Post -Uri $Uri -ContentType "application/json" -Headers $Headers -Body $json -TimeoutSec 30
+
+    try {
+        return Invoke-RestMethod -Method Post -Uri $Uri -ContentType "application/json" -Headers $Headers -Body $json -TimeoutSec 30
+    } catch {
+        $response = $_.Exception.Response
+        if ($response -and ($response.StatusCode.value__ -eq 307 -or $response.StatusCode.value__ -eq 308)) {
+            $location = $response.Headers["Location"]
+            if ($location) {
+                return Invoke-RestMethod -Method Post -Uri $location -ContentType "application/json" -Headers $Headers -Body $json -TimeoutSec 30
+            }
+        }
+        throw
+    }
 }
 
 function Get-BucketId {
@@ -310,7 +334,7 @@ try {
 
     $queueOk = Flush-Queue -Config $config
 
-    $buckets = Invoke-JsonGet -Uri "$baseUrl/buckets"
+    $buckets = Invoke-JsonGet -Uri "$baseUrl/buckets/"
     $windowBucket = Get-BucketId -Buckets $buckets -Prefix "aw-watcher-window" -Hostname $hostname
     $afkBucket = Get-BucketId -Buckets $buckets -Prefix "aw-watcher-afk" -Hostname $hostname
     $webBucket = Get-BucketId -Buckets $buckets -Prefix "aw-watcher-web" -Hostname $hostname
