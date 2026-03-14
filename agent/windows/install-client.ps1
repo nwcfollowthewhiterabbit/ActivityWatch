@@ -42,8 +42,14 @@ Set-Location '$appDir'
 Set-Content -Path $runnerPath -Value $runner -Encoding UTF8
 
 $taskCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$runnerPath`""
-schtasks.exe /Delete /TN $taskName /F 2>$null | Out-Null
-schtasks.exe /Create /SC MINUTE /MO 1 /TN $taskName /TR $taskCommand /F | Out-Null
+cmd.exe /c "schtasks /Query /TN ""$taskName"" >nul 2>&1"
+if ($LASTEXITCODE -eq 0) {
+    cmd.exe /c "schtasks /Delete /TN ""$taskName"" /F >nul 2>&1"
+}
+cmd.exe /c "schtasks /Create /SC MINUTE /MO 1 /TN ""$taskName"" /TR ""$taskCommand"" /F"
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to create scheduled task $taskName"
+}
 
 try {
     & powershell -ExecutionPolicy Bypass -File $runnerPath
@@ -51,7 +57,7 @@ try {
     Write-Warning "Initial sync run failed: $($_.Exception.Message)"
 }
 
-schtasks.exe /Run /TN $taskName | Out-Null
+cmd.exe /c "schtasks /Run /TN ""$taskName"" >nul 2>&1"
 
 Write-Host "Company Monitor client installed."
 Write-Host "Config: $configPath"
