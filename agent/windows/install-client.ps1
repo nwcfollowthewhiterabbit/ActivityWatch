@@ -36,24 +36,24 @@ $config = @{
 $config | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 $configPath
 
 $legacyTaskName = "CompanyMonitorSync"
-cmd.exe /c "schtasks /Query /TN ""$legacyTaskName"" >nul 2>&1"
+cmd.exe /c "schtasks /Query /TN ""$legacyTaskName""" | Out-Null
 if ($LASTEXITCODE -eq 0) {
-    cmd.exe /c "schtasks /Delete /TN ""$legacyTaskName"" /F >nul 2>&1"
+    cmd.exe /c "schtasks /Delete /TN ""$legacyTaskName"" /F" | Out-Null
 }
 
-cmd.exe /c "sc.exe query ""$serviceName"" >nul 2>&1"
+cmd.exe /c "sc.exe query ""$serviceName""" | Out-Null
 if ($LASTEXITCODE -ne 0) {
     $binPath = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$servicePath`" -ConfigPath `"$configPath`""
-    cmd.exe /c "sc.exe create ""$serviceName"" binPath= ""$binPath"" start= auto DisplayName= ""Company Monitor Sync"""
+    cmd.exe /c "sc.exe create ""$serviceName"" binPath= ""$binPath"" start= auto DisplayName= ""Company Monitor Sync""" | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to create Windows service $serviceName"
     }
 } else {
-    cmd.exe /c "sc.exe stop ""$serviceName"" >nul 2>&1"
+    cmd.exe /c "sc.exe stop ""$serviceName""" | Out-Null
 }
 
-cmd.exe /c "sc.exe failure ""$serviceName"" reset= 86400 actions= restart/60000/restart/60000/restart/60000" >nul 2>&1
-cmd.exe /c "sc.exe description ""$serviceName"" ""Syncs ActivityWatch data to Company Monitor server""" >nul 2>&1
+cmd.exe /c "sc.exe failure ""$serviceName"" reset= 86400 actions= restart/60000/restart/60000/restart/60000" | Out-Null
+cmd.exe /c "sc.exe description ""$serviceName"" ""Syncs ActivityWatch data to Company Monitor server""" | Out-Null
 
 try {
     & powershell -ExecutionPolicy Bypass -File $agentPath -ConfigPath $configPath
@@ -61,7 +61,7 @@ try {
     Write-Warning "Initial sync run failed: $($_.Exception.Message)"
 }
 
-cmd.exe /c "sc.exe start ""$serviceName"" >nul 2>&1"
+cmd.exe /c "sc.exe start ""$serviceName""" | Out-Null
 
 Write-Host "Company Monitor client installed."
 Write-Host "Config: $configPath"
