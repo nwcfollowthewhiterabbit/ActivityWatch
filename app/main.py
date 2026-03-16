@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import os
 from collections import defaultdict
 from contextlib import asynccontextmanager
@@ -27,6 +28,7 @@ engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 templates = Jinja2Templates(directory="app/templates")
 FIJI_TZ = ZoneInfo("Pacific/Fiji")
+logger = logging.getLogger("company_monitor")
 
 
 class Base(DeclarativeBase):
@@ -498,10 +500,19 @@ async def ingest_events(request: Request, db: Session = Depends(get_db), x_api_k
         detail = "Invalid JSON payload"
         if last_error:
             detail = f"{detail}: {last_error}"
+        logger.warning("Ingest rejected: %s", detail)
         raise HTTPException(status_code=400, detail=detail) from last_error
 
     events = payload.get("events")
+    if events is None and isinstance(payload, list):
+        events = payload
+    if isinstance(events, dict):
+        if "Array" in events and isinstance(events["Array"], list):
+            events = events["Array"]
+        elif "value" in events and isinstance(events["value"], list):
+            events = events["value"]
     if not isinstance(events, list) or not events:
+        logger.warning("Ingest rejected: payload missing non-empty events array")
         raise HTTPException(status_code=400, detail="Payload must contain non-empty 'events' array")
 
     inserted = 0
@@ -521,11 +532,17 @@ async def ingest_events(request: Request, db: Session = Depends(get_db), x_api_k
         ]
         missing = [field for field in required if field not in raw_event]
         if missing:
+            logger.warning("Ingest rejected: missing fields %s in event keys=%s", missing, sorted(raw_event.keys()))
             raise HTTPException(status_code=422, detail=f"Missing fields: {', '.join(missing)}")
 
-        ts_start = parse_dt(raw_event["timestamp_start"])
-        ts_end = parse_dt(raw_event["timestamp_end"])
+        try:
+            ts_start = parse_dt(str(raw_event["timestamp_start"]))
+            ts_end = parse_dt(str(raw_event["timestamp_end"]))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Ingest rejected: invalid timestamps start=%r end=%r error=%s", raw_event.get("timestamp_start"), raw_event.get("timestamp_end"), exc)
+            raise HTTPException(status_code=422, detail="Invalid timestamp format") from exc
         if ts_end < ts_start:
+            logger.warning("Ingest rejected: timestamp_end before timestamp_start for device_id=%s", raw_event.get("device_id"))
             raise HTTPException(status_code=422, detail="timestamp_end must be greater than or equal to timestamp_start")
 
         fingerprint = event_fingerprint(raw_event)

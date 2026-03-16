@@ -284,7 +284,7 @@ function Build-PayloadEvents {
         [object[]]$WebEvents
     )
 
-    $payload = New-Object System.Collections.Generic.List[object]
+    $payload = @()
 
     foreach ($event in $WindowEvents) {
         $start = Parse-DateUtc $event.timestamp
@@ -299,7 +299,7 @@ function Build-PayloadEvents {
         $afkData = if ($afkEvent -and $afkEvent.data) { $afkEvent.data } else { [PSCustomObject]@{} }
         $webData = if ($webEvent -and $webEvent.data) { $webEvent.data } else { [PSCustomObject]@{} }
 
-        $payload.Add([PSCustomObject]@{
+        $payload += [PSCustomObject]@{
             device_id = $Config.device_id
             device_label = $Config.device_label
             hostname = $Hostname
@@ -311,10 +311,10 @@ function Build-PayloadEvents {
             url = $webData.url
             is_afk = ($afkData.status -eq "afk")
             source = "aw-watcher-window"
-        })
+        }
     }
 
-    return $payload
+    return @($payload)
 }
 
 try {
@@ -372,8 +372,8 @@ try {
         exit 0
     }
 
-    $payload = [PSCustomObject]@{
-        events = $payloadEvents
+    $payload = [ordered]@{
+        events = @($payloadEvents)
     }
     $latestEnd = ($payloadEvents | Select-Object -ExpandProperty timestamp_end | Sort-Object | Select-Object -Last 1)
 
