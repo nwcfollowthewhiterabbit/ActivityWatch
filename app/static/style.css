@@ -52,6 +52,11 @@ body {
   margin-bottom: 20px;
 }
 
+.card.subtle {
+  background: #fcf7ef;
+  margin-bottom: 12px;
+}
+
 .narrow {
   width: min(420px, 100%);
 }

@@ -10,7 +10,7 @@ from fastapi import Depends, FastAPI, Form, Header, HTTPException, Request, stat
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import Date, DateTime, Integer, String, UniqueConstraint, create_engine, func, select
+from sqlalchemy import Date, DateTime, Integer, String, UniqueConstraint, create_engine, delete, func, select, update
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -201,7 +201,28 @@ def dashboard(
 def devices_page(request: Request, db: Session = Depends(get_db)):
     require_admin(request)
     devices = db.execute(select(Device).order_by(Device.device_label)).scalars().all()
-    return templates.TemplateResponse(request, "devices.html", {"request": request, "devices": devices})
+    event_counts = {
+        row.device_id: row.events_count
+        for row in db.execute(
+            select(ActivityEvent.device_id, func.count(ActivityEvent.id).label("events_count")).group_by(ActivityEvent.device_id)
+        )
+    }
+    devices_by_hostname: dict[str, list[Device]] = defaultdict(list)
+    for device in devices:
+        if device.hostname:
+            devices_by_hostname[device.hostname].append(device)
+    duplicate_groups = [group for group in devices_by_hostname.values() if len(group) > 1]
+    duplicate_groups.sort(key=lambda group: group[0].hostname or "")
+    return templates.TemplateResponse(
+        request,
+        "devices.html",
+        {
+            "request": request,
+            "devices": devices,
+            "event_counts": event_counts,
+            "duplicate_groups": duplicate_groups,
+        },
+    )
 
 
 @app.post("/devices/{device_id}/label")
@@ -212,6 +233,40 @@ def update_device_label(device_id: str, request: Request, device_label: str = Fo
         raise HTTPException(status_code=404, detail="Device not found")
     device.device_label = device_label.strip() or device.device_id
     db.add(device)
+    db.commit()
+    return RedirectResponse(url="/devices", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/devices/{device_id}/merge")
+def merge_device(
+    device_id: str,
+    request: Request,
+    target_device_id: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    require_admin(request)
+    source = db.get(Device, device_id)
+    target = db.get(Device, target_device_id)
+    if not source or not target:
+        raise HTTPException(status_code=404, detail="Device not found")
+    if source.device_id == target.device_id:
+        raise HTTPException(status_code=400, detail="Source and target devices must be different")
+
+    db.execute(
+        update(ActivityEvent)
+        .where(ActivityEvent.device_id == source.device_id)
+        .values(device_id=target.device_id, device_label=target.device_label)
+    )
+
+    if source.last_seen_at and (not target.last_seen_at or source.last_seen_at > target.last_seen_at):
+        target.last_seen_at = source.last_seen_at
+    if source.last_username and not target.last_username:
+        target.last_username = source.last_username
+    if source.hostname and not target.hostname:
+        target.hostname = source.hostname
+
+    db.add(target)
+    db.execute(delete(Device).where(Device.device_id == source.device_id))
     db.commit()
     return RedirectResponse(url="/devices", status_code=status.HTTP_303_SEE_OTHER)
 

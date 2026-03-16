@@ -19,6 +19,52 @@
     </header>
 
     <section class="card">
+      {% if duplicate_groups %}
+      <div class="stack">
+        <h2>Possible Duplicates</h2>
+        <p class="muted">These devices share the same hostname and are good candidates for merging.</p>
+        {% for group in duplicate_groups %}
+        <div class="card subtle">
+          <h3>{{ group[0].hostname }}</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th>Device ID</th>
+                <th>Events</th>
+                <th>Last Seen</th>
+                <th>Merge</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for device in group %}
+              <tr>
+                <td>{{ device.device_label }}</td>
+                <td>{{ device.device_id }}</td>
+                <td>{{ event_counts.get(device.device_id, 0) }}</td>
+                <td>{{ device.last_seen_at.strftime("%Y-%m-%d %H:%M") if device.last_seen_at else "-" }}</td>
+                <td>
+                  <form method="post" action="/devices/{{ device.device_id }}/merge" class="inline-form">
+                    <select name="target_device_id">
+                      {% for option in group %}
+                      {% if option.device_id != device.device_id %}
+                      <option value="{{ option.device_id }}">{{ option.device_label }} ({{ option.device_id }})</option>
+                      {% endif %}
+                      {% endfor %}
+                    </select>
+                    <button type="submit">Merge Into</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <h2>All Devices</h2>
       <table>
         <thead>
           <tr>
@@ -27,6 +73,7 @@
             <th>Hostname</th>
             <th>Last User</th>
             <th>Last Seen (UTC)</th>
+            <th>Events</th>
             <th>Update Label</th>
           </tr>
         </thead>
@@ -38,6 +85,7 @@
             <td>{{ device.hostname or "-" }}</td>
             <td>{{ device.last_username or "-" }}</td>
             <td>{{ device.last_seen_at.strftime("%Y-%m-%d %H:%M") if device.last_seen_at else "-" }}</td>
+            <td>{{ event_counts.get(device.device_id, 0) }}</td>
             <td>
               <form method="post" action="/devices/{{ device.device_id }}/label" class="inline-form">
                 <input type="text" name="device_label" value="{{ device.device_label }}" required>
