@@ -38,6 +38,24 @@ function Invoke-Nssm {
     }
 }
 
+function Wait-ServiceDeleted {
+    param(
+        [string]$Name,
+        [int]$TimeoutSeconds = 20
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        cmd.exe /c "sc.exe query ""$Name""" | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            return
+        }
+        Start-Sleep -Seconds 1
+    } while ((Get-Date) -lt $deadline)
+
+    throw "Service $Name is still present after waiting $TimeoutSeconds seconds"
+}
+
 function Ensure-Nssm {
     New-Item -ItemType Directory -Force -Path $nssmRoot | Out-Null
     New-Item -ItemType Directory -Force -Path $nssmExtractDir | Out-Null
@@ -93,28 +111,22 @@ $script:NssmExe = Ensure-Nssm
 cmd.exe /c "sc.exe query ""$serviceName""" | Out-Null
 if ($LASTEXITCODE -eq 0) {
     cmd.exe /c "sc.exe stop ""$serviceName""" | Out-Null
-    Start-Sleep -Seconds 2
     try {
         Invoke-Nssm -Arguments @("remove", $serviceName, "confirm") -IgnoreErrors
     } catch {
         cmd.exe /c "sc.exe delete ""$serviceName""" | Out-Null
     }
-    Start-Sleep -Seconds 2
+    Wait-ServiceDeleted -Name $serviceName
 }
 
 Invoke-Nssm -Arguments @(
     "install",
     $serviceName,
-    "powershell.exe",
-    "-NoProfile",
-    "-ExecutionPolicy",
-    "Bypass",
-    "-File",
-    $servicePath,
-    "-ConfigPath",
-    $configPath
+    "powershell.exe"
 )
 Invoke-Nssm -Arguments @("set", $serviceName, "AppDirectory", $appDir)
+Invoke-Nssm -Arguments @("set", $serviceName, "Application", "powershell.exe")
+Invoke-Nssm -Arguments @("set", $serviceName, "AppParameters", "-NoProfile -ExecutionPolicy Bypass -File `"$servicePath`" -ConfigPath `"$configPath`"")
 Invoke-Nssm -Arguments @("set", $serviceName, "DisplayName", "Company Monitor Sync")
 Invoke-Nssm -Arguments @("set", $serviceName, "Description", "Syncs ActivityWatch data to Company Monitor server")
 Invoke-Nssm -Arguments @("set", $serviceName, "Start", "SERVICE_AUTO_START")
