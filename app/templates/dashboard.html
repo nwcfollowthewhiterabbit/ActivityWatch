@@ -11,6 +11,7 @@
       <div>
         <h1>Company Monitor</h1>
         <p class="muted">Centralized employee activity dashboard</p>
+        <p class="muted">Displayed times: {{ display_timezone }}</p>
       </div>
       <div class="topbar-actions">
         <a href="/devices">Devices</a>
@@ -101,7 +102,7 @@
           <tbody>
             {% for event in recent_events %}
             <tr>
-              <td>{{ event.timestamp_start.strftime("%Y-%m-%d %H:%M") }}</td>
+              <td>{{ event.timestamp_start | fiji_dt }}</td>
               <td>{{ event.username }}</td>
               <td>{{ event.device_label }}</td>
               <td>{{ event.app or "Unknown" }}</td>

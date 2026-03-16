@@ -5,6 +5,7 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from typing import Generator
+from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, Form, Header, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -24,6 +25,7 @@ SESSION_SECRET = os.getenv("SESSION_SECRET", "replace-session-secret")
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 templates = Jinja2Templates(directory="app/templates")
+FIJI_TZ = ZoneInfo("Pacific/Fiji")
 
 
 class Base(DeclarativeBase):
@@ -118,6 +120,15 @@ app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, same_site="lax"
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 
+def format_fiji_dt(value: datetime | None) -> str:
+    if not value:
+        return "-"
+    return value.astimezone(FIJI_TZ).strftime("%Y-%m-%d %H:%M")
+
+
+templates.env.filters["fiji_dt"] = format_fiji_dt
+
+
 @app.get("/health")
 def health(db: Session = Depends(get_db)) -> dict:
     db.execute(select(1))
@@ -179,6 +190,7 @@ def dashboard(
             "request": request,
             "devices": devices,
             "usernames": usernames,
+            "display_timezone": "Pacific/Fiji",
             "selected_device_id": device_id or "",
             "selected_username": username or "",
             "from_date": str(date_from),
@@ -221,6 +233,7 @@ def devices_page(request: Request, db: Session = Depends(get_db)):
             "devices": devices,
             "event_counts": event_counts,
             "duplicate_groups": duplicate_groups,
+            "display_timezone": "Pacific/Fiji",
         },
     )
 

@@ -11,6 +11,7 @@
       <div>
         <h1>Devices</h1>
         <p class="muted">Registered endpoints and latest contact status</p>
+        <p class="muted">Displayed times: {{ display_timezone }}</p>
       </div>
       <div class="topbar-actions">
         <a href="/">Dashboard</a>
@@ -42,7 +43,7 @@
                 <td>{{ device.device_label }}</td>
                 <td>{{ device.device_id }}</td>
                 <td>{{ event_counts.get(device.device_id, 0) }}</td>
-                <td>{{ device.last_seen_at.strftime("%Y-%m-%d %H:%M") if device.last_seen_at else "-" }}</td>
+                <td>{{ device.last_seen_at | fiji_dt }}</td>
                 <td>
                   <form method="post" action="/devices/{{ device.device_id }}/merge" class="inline-form">
                     <select name="target_device_id">
@@ -84,7 +85,7 @@
             <td>{{ device.device_id }}</td>
             <td>{{ device.hostname or "-" }}</td>
             <td>{{ device.last_username or "-" }}</td>
-            <td>{{ device.last_seen_at.strftime("%Y-%m-%d %H:%M") if device.last_seen_at else "-" }}</td>
+            <td>{{ device.last_seen_at | fiji_dt }}</td>
             <td>{{ event_counts.get(device.device_id, 0) }}</td>
             <td>
               <form method="post" action="/devices/{{ device.device_id }}/label" class="inline-form">
