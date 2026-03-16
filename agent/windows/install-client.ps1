@@ -23,6 +23,7 @@ $serviceName = "CompanyMonitorSync"
 $nssmRoot = Join-Path $appDir "nssm"
 $nssmZip = Join-Path $nssmRoot "nssm.zip"
 $nssmExtractDir = Join-Path $nssmRoot "pkg"
+$bundledNssmZip = Join-Path $scriptDir "vendor\nssm.zip"
 $nssmDownloadUrl = "https://nssm.cc/ci/nssm-2.24-101-g897c7ad.zip"
 
 function Invoke-Nssm {
@@ -42,19 +43,29 @@ function Ensure-Nssm {
     New-Item -ItemType Directory -Force -Path $nssmExtractDir | Out-Null
 
     $archDir = if ([Environment]::Is64BitOperatingSystem) { "win64" } else { "win32" }
-    $candidate = Join-Path $nssmExtractDir "$archDir\nssm.exe"
+    $candidate = Get-ChildItem -Path $nssmExtractDir -Filter nssm.exe -Recurse -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match [regex]::Escape($archDir) } |
+        Select-Object -First 1
     if (Test-Path $candidate) {
-        return $candidate
+        return $candidate.FullName
     }
 
-    Invoke-WebRequest -Uri $nssmDownloadUrl -OutFile $nssmZip
+    if (Test-Path $bundledNssmZip) {
+        Copy-Item -Force $bundledNssmZip $nssmZip
+    } else {
+        Invoke-WebRequest -Uri $nssmDownloadUrl -OutFile $nssmZip
+    }
     Expand-Archive -Path $nssmZip -DestinationPath $nssmExtractDir -Force
 
-    if (-not (Test-Path $candidate)) {
+    $candidate = Get-ChildItem -Path $nssmExtractDir -Filter nssm.exe -Recurse -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match [regex]::Escape($archDir) } |
+        Select-Object -First 1
+
+    if (-not $candidate) {
         throw "nssm.exe not found after extraction"
     }
 
-    return $candidate
+    return $candidate.FullName
 }
 
 New-Item -ItemType Directory -Force -Path $appDir | Out-Null

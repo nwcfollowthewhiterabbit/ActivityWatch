@@ -60,5 +60,6 @@ It starts automatically with Windows and runs a sync cycle every 60 seconds.
 
 ## Notes
 
-- The installer downloads NSSM from the official site on first install.
+- The Windows client package includes a bundled `vendor/nssm.zip` so installs do not depend on the NSSM site being online.
+- The installer only falls back to downloading NSSM from the official site if the bundled archive is missing.
 - For Windows 10 and newer, the NSSM site recommends the `2.24-101` pre-release build to avoid service start issues.
