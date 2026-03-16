@@ -46,7 +46,7 @@ function Ensure-Nssm {
     $candidate = Get-ChildItem -Path $nssmExtractDir -Filter nssm.exe -Recurse -ErrorAction SilentlyContinue |
         Where-Object { $_.FullName -match [regex]::Escape($archDir) } |
         Select-Object -First 1
-    if (Test-Path $candidate) {
+    if ($candidate) {
         return $candidate.FullName
     }
 
