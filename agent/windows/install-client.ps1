@@ -20,6 +20,42 @@ $agentPath = Join-Path $appDir "sync_agent.ps1"
 $servicePath = Join-Path $appDir "sync_service.ps1"
 $configPath = Join-Path $appDir "config.json"
 $serviceName = "CompanyMonitorSync"
+$nssmRoot = Join-Path $appDir "nssm"
+$nssmZip = Join-Path $nssmRoot "nssm.zip"
+$nssmExtractDir = Join-Path $nssmRoot "pkg"
+$nssmDownloadUrl = "https://nssm.cc/ci/nssm-2.24-101-g897c7ad.zip"
+
+function Invoke-Nssm {
+    param(
+        [string[]]$Arguments,
+        [switch]$IgnoreErrors
+    )
+
+    & $script:NssmExe @Arguments | Out-Null
+    if (-not $IgnoreErrors -and $LASTEXITCODE -ne 0) {
+        throw "NSSM command failed: $($Arguments -join ' ')"
+    }
+}
+
+function Ensure-Nssm {
+    New-Item -ItemType Directory -Force -Path $nssmRoot | Out-Null
+    New-Item -ItemType Directory -Force -Path $nssmExtractDir | Out-Null
+
+    $archDir = if ([Environment]::Is64BitOperatingSystem) { "win64" } else { "win32" }
+    $candidate = Join-Path $nssmExtractDir "$archDir\nssm.exe"
+    if (Test-Path $candidate) {
+        return $candidate
+    }
+
+    Invoke-WebRequest -Uri $nssmDownloadUrl -OutFile $nssmZip
+    Expand-Archive -Path $nssmZip -DestinationPath $nssmExtractDir -Force
+
+    if (-not (Test-Path $candidate)) {
+        throw "nssm.exe not found after extraction"
+    }
+
+    return $candidate
+}
 
 New-Item -ItemType Directory -Force -Path $appDir | Out-Null
 Copy-Item -Force (Join-Path $scriptDir "sync_agent.ps1") $agentPath
@@ -41,29 +77,56 @@ if ($LASTEXITCODE -eq 0) {
     cmd.exe /c "schtasks /Delete /TN ""$legacyTaskName"" /F" | Out-Null
 }
 
+$script:NssmExe = Ensure-Nssm
+
 cmd.exe /c "sc.exe query ""$serviceName""" | Out-Null
-if ($LASTEXITCODE -ne 0) {
-    $binPath = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$servicePath`" -ConfigPath `"$configPath`""
-    cmd.exe /c "sc.exe create ""$serviceName"" binPath= ""$binPath"" start= auto DisplayName= ""Company Monitor Sync""" | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to create Windows service $serviceName"
-    }
-} else {
+if ($LASTEXITCODE -eq 0) {
     cmd.exe /c "sc.exe stop ""$serviceName""" | Out-Null
+    Start-Sleep -Seconds 2
+    try {
+        Invoke-Nssm -Arguments @("remove", $serviceName, "confirm") -IgnoreErrors
+    } catch {
+        cmd.exe /c "sc.exe delete ""$serviceName""" | Out-Null
+    }
+    Start-Sleep -Seconds 2
 }
 
-cmd.exe /c "sc.exe failure ""$serviceName"" reset= 86400 actions= restart/60000/restart/60000/restart/60000" | Out-Null
-cmd.exe /c "sc.exe description ""$serviceName"" ""Syncs ActivityWatch data to Company Monitor server""" | Out-Null
+Invoke-Nssm -Arguments @(
+    "install",
+    $serviceName,
+    "powershell.exe",
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    $servicePath,
+    "-ConfigPath",
+    $configPath
+)
+Invoke-Nssm -Arguments @("set", $serviceName, "AppDirectory", $appDir)
+Invoke-Nssm -Arguments @("set", $serviceName, "DisplayName", "Company Monitor Sync")
+Invoke-Nssm -Arguments @("set", $serviceName, "Description", "Syncs ActivityWatch data to Company Monitor server")
+Invoke-Nssm -Arguments @("set", $serviceName, "Start", "SERVICE_AUTO_START")
+Invoke-Nssm -Arguments @("set", $serviceName, "ObjectName", "LocalSystem")
+Invoke-Nssm -Arguments @("set", $serviceName, "AppStdout", (Join-Path $appDir "service-stdout.log"))
+Invoke-Nssm -Arguments @("set", $serviceName, "AppStderr", (Join-Path $appDir "service-stderr.log"))
+Invoke-Nssm -Arguments @("set", $serviceName, "AppRotateFiles", "1")
+Invoke-Nssm -Arguments @("set", $serviceName, "AppRotateOnline", "0")
+Invoke-Nssm -Arguments @("set", $serviceName, "AppExit", "Default", "Restart")
+Invoke-Nssm -Arguments @("set", $serviceName, "AppThrottle", "1500")
+Invoke-Nssm -Arguments @("set", $serviceName, "AppRestartDelay", "60000")
 
 try {
-    & powershell -ExecutionPolicy Bypass -File $agentPath -ConfigPath $configPath
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $agentPath -ConfigPath $configPath
 } catch {
     Write-Warning "Initial sync run failed: $($_.Exception.Message)"
 }
 
-cmd.exe /c "sc.exe start ""$serviceName""" | Out-Null
+Invoke-Nssm -Arguments @("start", $serviceName)
 
 Write-Host "Company Monitor client installed."
-Write-Host "Config: $configPath"
-Write-Host "Service: $serviceName"
-Write-Host "Log:    $(Join-Path $appDir 'agent.log')"
+Write-Host "Config:   $configPath"
+Write-Host "Service:  $serviceName"
+Write-Host "NSSM:     $script:NssmExe"
+Write-Host "Log:      $(Join-Path $appDir 'agent.log')"
+Write-Host "Svc Log:  $(Join-Path $appDir 'service.log')"

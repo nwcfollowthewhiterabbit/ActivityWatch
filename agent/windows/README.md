@@ -11,7 +11,7 @@ This folder contains a semi-automated Windows client installer for the Company M
 - Stores offline queue in `C:\ProgramData\CompanyMonitor\queue\`
 - Writes logs to `C:\ProgramData\CompanyMonitor\agent.log`
 - Writes service runner logs to `C:\ProgramData\CompanyMonitor\service.log`
-- Uses only standard Windows tools: PowerShell + Windows Service
+- Installs a real Windows service using NSSM
 
 ## Easiest install on a Windows PC
 
@@ -48,6 +48,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 - `C:\ProgramData\CompanyMonitor\config.json`
 - `C:\ProgramData\CompanyMonitor\state.json`
 - `C:\ProgramData\CompanyMonitor\queue\`
+- `C:\ProgramData\CompanyMonitor\nssm\`
 - `C:\ProgramData\CompanyMonitor\agent.log`
 - `C:\ProgramData\CompanyMonitor\service.log`
 
@@ -56,3 +57,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 The installer registers a Windows service named `CompanyMonitorSync`.
 
 It starts automatically with Windows and runs a sync cycle every 60 seconds.
+
+## Notes
+
+- The installer downloads NSSM from the official site on first install.
+- For Windows 10 and newer, the NSSM site recommends the `2.24-101` pre-release build to avoid service start issues.
