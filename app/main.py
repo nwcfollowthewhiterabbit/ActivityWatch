@@ -112,6 +112,46 @@ def event_fingerprint(payload: dict) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def looks_like_event(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    keys = {str(key).lower() for key in value.keys()}
+    markers = {"device_id", "timestamp_start", "timestamp_end", "hostname", "username"}
+    return len(keys & markers) >= 3
+
+
+def extract_events(payload: object) -> list[dict]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+
+    if not isinstance(payload, dict):
+        return []
+
+    lower_key_map = {str(key).lower(): key for key in payload.keys()}
+    for candidate_key in ("events", "items", "value", "values", "data"):
+        if candidate_key in lower_key_map:
+            value = payload[lower_key_map[candidate_key]]
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+            if isinstance(value, dict):
+                nested = extract_events(value)
+                if nested:
+                    return nested
+                if looks_like_event(value):
+                    return [value]
+
+    if looks_like_event(payload):
+        return [payload]
+
+    dict_values = list(payload.values())
+    if dict_values and all(isinstance(item, dict) for item in dict_values):
+        event_like_values = [item for item in dict_values if looks_like_event(item)]
+        if event_like_values:
+            return event_like_values
+
+    return []
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
@@ -503,16 +543,15 @@ async def ingest_events(request: Request, db: Session = Depends(get_db), x_api_k
         logger.warning("Ingest rejected: %s", detail)
         raise HTTPException(status_code=400, detail=detail) from last_error
 
-    events = payload.get("events")
-    if events is None and isinstance(payload, list):
-        events = payload
-    if isinstance(events, dict):
-        if "Array" in events and isinstance(events["Array"], list):
-            events = events["Array"]
-        elif "value" in events and isinstance(events["value"], list):
-            events = events["value"]
+    events = extract_events(payload)
     if not isinstance(events, list) or not events:
-        logger.warning("Ingest rejected: payload missing non-empty events array")
+        payload_keys = sorted(payload.keys()) if isinstance(payload, dict) else []
+        logger.warning(
+            "Ingest rejected: payload missing non-empty events array payload_type=%s keys=%s preview=%r",
+            type(payload).__name__,
+            payload_keys,
+            decoded_body[:500],
+        )
         raise HTTPException(status_code=400, detail="Payload must contain non-empty 'events' array")
 
     inserted = 0
