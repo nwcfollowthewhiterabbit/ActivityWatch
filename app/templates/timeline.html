@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Timeline</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Timeline</h1>
+        <p class="muted">Detailed device activity view</p>
+        <p class="muted">Displayed times: {{ display_timezone }}</p>
+      </div>
+      <div class="topbar-actions">
+        <a href="/">Dashboard</a>
+        <a href="/devices">Devices</a>
+        <form method="post" action="/logout"><button type="submit" class="secondary">Logout</button></form>
+      </div>
+    </header>
+
+    <section class="card">
+      <form method="get" action="/timeline" class="filters">
+        <label>Device
+          <select name="device_id">
+            {% for device in devices %}
+            <option value="{{ device.device_id }}" {% if selected_device_id == device.device_id %}selected{% endif %}>
+              {{ device.device_label }} ({{ device.device_id }})
+            </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Date
+          <input type="date" name="day" value="{{ selected_day }}">
+        </label>
+        <button type="submit">Apply</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <div class="timeline-header">
+        <div>
+          <h2>{{ selected_device.device_label if selected_device else "No device selected" }}</h2>
+          {% if selected_device %}
+          <p class="muted">{{ selected_device.hostname or "-" }} | {{ selected_day }}</p>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if timeline_rows and selected_device %}
+      <div class="timeline">
+        <div class="timeline-scale">
+          <div class="timeline-row-label"></div>
+          <div class="timeline-lane timeline-scale-lane">
+            {% for marker in hour_markers %}
+            <div class="timeline-marker" style="left: {{ marker.left_pct }}%;">
+              <span>{{ marker.label }}</span>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        {% for row in timeline_rows %}
+        <div class="timeline-track">
+          <div class="timeline-row-label">{{ row.label }}</div>
+          <div class="timeline-lane {{ row.row_class }}">
+            {% for marker in hour_markers[:-1] %}
+            <div class="timeline-gridline" style="left: {{ marker.left_pct }}%;"></div>
+            {% endfor %}
+            {% for segment in row.segments %}
+            <div
+              class="timeline-segment {{ segment.css_class }}"
+              style="left: {{ segment.left_pct }}%; width: {{ segment.width_pct }}%;"
+              title="{{ segment.title }}"
+            >
+              <span>{{ segment.label }}</span>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="muted">No timeline data yet for this device and date.</p>
+      {% endif %}
+    </section>
+  </body>
+</html>

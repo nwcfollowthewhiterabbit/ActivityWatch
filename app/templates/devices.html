@@ -14,6 +14,7 @@
         <p class="muted">Displayed times: {{ display_timezone }}</p>
       </div>
       <div class="topbar-actions">
+        <a href="/timeline">Timeline</a>
         <a href="/">Dashboard</a>
         <form method="post" action="/logout"><button type="submit" class="secondary">Logout</button></form>
       </div>
@@ -75,6 +76,7 @@
             <th>Last User</th>
             <th>Last Seen (UTC)</th>
             <th>Events</th>
+            <th>Timeline</th>
             <th>Update Label</th>
           </tr>
         </thead>
@@ -87,6 +89,7 @@
             <td>{{ device.last_username or "-" }}</td>
             <td>{{ device.last_seen_at | fiji_dt }}</td>
             <td>{{ event_counts.get(device.device_id, 0) }}</td>
+            <td><a href="/timeline?device_id={{ device.device_id }}">Open</a></td>
             <td>
               <form method="post" action="/devices/{{ device.device_id }}/label" class="inline-form">
                 <input type="text" name="device_label" value="{{ device.device_label }}" required>

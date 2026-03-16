@@ -4,6 +4,7 @@ import os
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
+from urllib.parse import urlparse
 from typing import Generator
 from zoneinfo import ZoneInfo
 
@@ -126,7 +127,54 @@ def format_fiji_dt(value: datetime | None) -> str:
     return value.astimezone(FIJI_TZ).strftime("%Y-%m-%d %H:%M")
 
 
+def format_fiji_time(value: datetime | None) -> str:
+    if not value:
+        return "-"
+    return value.astimezone(FIJI_TZ).strftime("%H:%M")
+
+
+def clamp_event(event: ActivityEvent, start_utc: datetime, end_utc: datetime) -> tuple[datetime, datetime] | None:
+    start = max(event.timestamp_start, start_utc)
+    end = min(event.timestamp_end, end_utc)
+    if end <= start:
+        return None
+    return start, end
+
+
+def pct_position(start: datetime, end: datetime, boundary_start: datetime, boundary_end: datetime) -> tuple[float, float]:
+    total = max((boundary_end - boundary_start).total_seconds(), 1)
+    left = ((start - boundary_start).total_seconds() / total) * 100
+    width = max(((end - start).total_seconds() / total) * 100, 0.15)
+    return left, width
+
+
+def compact_segments(segments: list[dict], key_name: str) -> list[dict]:
+    if not segments:
+        return []
+    merged = [segments[0].copy()]
+    for segment in segments[1:]:
+        prev = merged[-1]
+        if (
+            prev[key_name] == segment[key_name]
+            and abs(prev["end_pct"] - segment["left_pct"]) < 0.05
+        ):
+            prev["end_pct"] = segment["left_pct"] + segment["width_pct"]
+            prev["width_pct"] = prev["end_pct"] - prev["left_pct"]
+            prev["end_label"] = segment["end_label"]
+        else:
+            merged.append(segment.copy())
+    return merged
+
+
+def short_domain(value: str | None) -> str:
+    if not value:
+        return ""
+    parsed = urlparse(value)
+    return parsed.netloc or value
+
+
 templates.env.filters["fiji_dt"] = format_fiji_dt
+templates.env.filters["fiji_time"] = format_fiji_time
 
 
 @app.get("/health")
@@ -205,6 +253,131 @@ def dashboard(
             "top_sites": sorted(sites.items(), key=lambda item: item[1], reverse=True)[:15],
             "daily": sorted(daily.items()),
             "recent_events": recent_events[:50],
+        },
+    )
+
+
+@app.get("/timeline", response_class=HTMLResponse)
+def timeline_page(
+    request: Request,
+    device_id: str | None = None,
+    day: str | None = None,
+    db: Session = Depends(get_db),
+):
+    require_admin(request)
+
+    devices = db.execute(select(Device).order_by(Device.device_label)).scalars().all()
+    if not devices:
+        return templates.TemplateResponse(
+            request,
+            "timeline.html",
+            {
+                "request": request,
+                "devices": [],
+                "selected_device_id": "",
+                "selected_day": day or str(datetime.now(FIJI_TZ).date()),
+                "display_timezone": "Pacific/Fiji",
+                "timeline_rows": [],
+                "hour_markers": [],
+                "selected_device": None,
+            },
+        )
+
+    selected_device_id = device_id or devices[0].device_id
+    selected_day = datetime.fromisoformat(day).date() if day else datetime.now(FIJI_TZ).date()
+    selected_device = db.get(Device, selected_device_id)
+
+    local_start = datetime.combine(selected_day, datetime.min.time(), tzinfo=FIJI_TZ)
+    local_end = local_start + timedelta(days=1)
+    start_utc = local_start.astimezone(timezone.utc)
+    end_utc = local_end.astimezone(timezone.utc)
+
+    events = (
+        db.execute(
+            select(ActivityEvent)
+            .where(
+                ActivityEvent.device_id == selected_device_id,
+                ActivityEvent.timestamp_end > start_utc,
+                ActivityEvent.timestamp_start < end_utc,
+            )
+            .order_by(ActivityEvent.timestamp_start)
+        )
+        .scalars()
+        .all()
+    )
+
+    activity_segments = []
+    site_segments = []
+    app_segments = []
+
+    for event in events:
+        bounded = clamp_event(event, start_utc, end_utc)
+        if not bounded:
+            continue
+        clipped_start, clipped_end = bounded
+        local_clipped_start = clipped_start.astimezone(FIJI_TZ)
+        local_clipped_end = clipped_end.astimezone(FIJI_TZ)
+        left_pct, width_pct = pct_position(local_clipped_start, local_clipped_end, local_start, local_end)
+
+        activity_segments.append(
+            {
+                "label": "afk" if event.is_afk else "not-afk",
+                "left_pct": left_pct,
+                "width_pct": width_pct,
+                "end_pct": left_pct + width_pct,
+                "start_label": local_clipped_start.strftime("%H:%M"),
+                "end_label": local_clipped_end.strftime("%H:%M"),
+                "title": f"{'AFK' if event.is_afk else 'Active'} {local_clipped_start.strftime('%H:%M')} - {local_clipped_end.strftime('%H:%M')}",
+                "css_class": "afk" if event.is_afk else "active",
+            }
+        )
+
+        if event.url:
+            site_segments.append(
+                {
+                    "label": short_domain(event.url),
+                    "left_pct": left_pct,
+                    "width_pct": width_pct,
+                    "title": f"{event.url}\n{local_clipped_start.strftime('%H:%M')} - {local_clipped_end.strftime('%H:%M')}",
+                    "css_class": "site",
+                }
+            )
+
+        app_label = (event.window_title or event.app or "Unknown").strip()
+        app_segments.append(
+            {
+                "label": app_label[:48],
+                "left_pct": left_pct,
+                "width_pct": width_pct,
+                "title": f"{event.app or 'Unknown'} | {app_label}\n{local_clipped_start.strftime('%H:%M')} - {local_clipped_end.strftime('%H:%M')}",
+                "css_class": "app",
+            }
+        )
+
+    activity_segments = compact_segments(activity_segments, "label")
+    hour_markers = [
+        {"label": (local_start + timedelta(hours=hour)).strftime("%H:%M"), "left_pct": (hour / 24) * 100}
+        for hour in range(25)
+    ]
+
+    timeline_rows = [
+        {"label": "Activity", "segments": activity_segments, "row_class": "activity-row"},
+        {"label": "Sites", "segments": site_segments, "row_class": "sites-row"},
+        {"label": "Apps", "segments": app_segments, "row_class": "apps-row"},
+    ]
+
+    return templates.TemplateResponse(
+        request,
+        "timeline.html",
+        {
+            "request": request,
+            "devices": devices,
+            "selected_device_id": selected_device_id,
+            "selected_day": str(selected_day),
+            "display_timezone": "Pacific/Fiji",
+            "timeline_rows": timeline_rows,
+            "hour_markers": hour_markers,
+            "selected_device": selected_device,
         },
     )
 
