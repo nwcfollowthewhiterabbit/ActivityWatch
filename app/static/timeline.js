@@ -1,4 +1,17 @@
 window.CompanyMonitorTimeline = (() => {
+  function resolveVis() {
+    const candidates = [window.vis, window.visTimeline, window.visGraph2d];
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      const TimelineCtor = candidate.Timeline || candidate.default?.Timeline || candidate.default;
+      const DataSetCtor = candidate.DataSet || window.vis?.DataSet || window.visData?.DataSet;
+      if (TimelineCtor && DataSetCtor) {
+        return { TimelineCtor, DataSetCtor };
+      }
+    }
+    return null;
+  }
+
   async function init({ containerId, endpoint }) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -12,8 +25,14 @@ window.CompanyMonitorTimeline = (() => {
       }
       const payload = await response.json();
 
-      const groups = new vis.DataSet(payload.groups || []);
-      const items = new vis.DataSet(payload.items || []);
+      const visLib = resolveVis();
+      if (!visLib) {
+        throw new Error("vis-timeline library did not expose Timeline/DataSet globals");
+      }
+
+      const { TimelineCtor, DataSetCtor } = visLib;
+      const groupsData = new DataSetCtor(payload.groups || []);
+      const itemsData = new DataSetCtor(payload.items || []);
 
       container.innerHTML = "";
 
@@ -38,7 +57,7 @@ window.CompanyMonitorTimeline = (() => {
         },
       };
 
-      new vis.Timeline(container, items, groups, options);
+      new TimelineCtor(container, itemsData, groupsData, options);
     } catch (error) {
       container.innerHTML = `<div class="alert">Timeline failed to load: ${error.message}</div>`;
     }
