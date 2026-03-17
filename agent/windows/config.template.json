@@ -1,8 +1,8 @@
 {
   "server_url": "https://tt.greenleafpacific.com",
-  "api_key": "replace-with-ingest-api-key",
-  "device_id": "laptop-001",
-  "device_label": "Office - Laptop 1",
+  "api_key": "1a19eea7df861cffb38f18c1c6829805c657f49a5c8e56cf",
+  "device_id": "Office-PC-01",
+  "device_label": "Office-PC-01",
   "activitywatch_url": "http://localhost:5600/api/0",
   "lookback_minutes": 10
 }

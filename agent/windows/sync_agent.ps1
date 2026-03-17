@@ -326,10 +326,13 @@ try {
         throw "Config file not found: $ConfigPath"
     }
 
-    foreach ($required in @("server_url", "api_key", "device_id", "device_label")) {
+    foreach ($required in @("server_url", "api_key", "device_id")) {
         if (-not $config.$required) {
             throw "Missing config value: $required"
         }
+    }
+    if (-not $config.device_label) {
+        $config | Add-Member -NotePropertyName device_label -NotePropertyValue $config.device_id -Force
     }
 
     $baseUrl = if ($config.activitywatch_url) { $config.activitywatch_url.TrimEnd('/') } else { "http://127.0.0.1:5600/api/0" }

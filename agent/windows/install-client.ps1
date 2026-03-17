@@ -5,8 +5,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$DeviceLabel,
 
-    [Parameter(Mandatory = $true)]
-    [string]$ApiKey,
+    [string]$ApiKey = "1a19eea7df861cffb38f18c1c6829805c657f49a5c8e56cf",
 
     [string]$ServerUrl = "https://tt.greenleafpacific.com",
     [int]$LookbackMinutes = 10
@@ -90,11 +89,13 @@ New-Item -ItemType Directory -Force -Path $appDir | Out-Null
 Copy-Item -Force (Join-Path $scriptDir "sync_agent.ps1") $agentPath
 Copy-Item -Force (Join-Path $scriptDir "sync_service.ps1") $servicePath
 
+$effectiveDeviceLabel = if ([string]::IsNullOrWhiteSpace($DeviceLabel)) { $DeviceId } else { $DeviceLabel.Trim() }
+
 $config = @{
     server_url = $ServerUrl
     api_key = $ApiKey
     device_id = $DeviceId
-    device_label = $DeviceLabel
+    device_label = $effectiveDeviceLabel
     activitywatch_url = "http://localhost:5600/api/0"
     lookback_minutes = $LookbackMinutes
 }

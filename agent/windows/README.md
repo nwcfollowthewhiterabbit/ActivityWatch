@@ -13,6 +13,8 @@ This folder contains a semi-automated Windows client installer for the Company M
 - Writes service runner logs to `C:\ProgramData\CompanyMonitor\service.log`
 - Installs a real Windows service using NSSM
 
+The installer uses one computer identifier for both the internal `device_id` and the displayed device name.
+
 ## Easiest install on a Windows PC
 
 Double-click:
@@ -23,9 +25,7 @@ install-client.cmd
 
 It will:
 
-- ask how the PC should be named in the dashboard
-- ask for a technical device ID
-- ask for the ingest API key
+- ask for the computer identifier shown in the dashboard
 - check that ActivityWatch is running
 - install and start the sync service automatically
 
@@ -36,9 +36,8 @@ Run PowerShell as Administrator:
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\install-client.ps1 `
-  -DeviceId "laptop-001" `
-  -DeviceLabel "Office - Laptop 1" `
-  -ApiKey "YOUR_INGEST_API_KEY"
+  -DeviceId "Office-PC-01" `
+  -DeviceLabel "Office-PC-01"
 ```
 
 ## Installed files
@@ -63,3 +62,4 @@ It starts automatically with Windows and runs a sync cycle every 60 seconds.
 - The Windows client package includes a bundled `vendor/nssm.zip` so installs do not depend on the NSSM site being online.
 - The installer only falls back to downloading NSSM from the official site if the bundled archive is missing.
 - For Windows 10 and newer, the NSSM site recommends the `2.24-101` pre-release build to avoid service start issues.
+- The ingest API key is bundled into the installer right now, so the operator is not prompted for it during setup.

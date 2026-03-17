@@ -1,6 +1,6 @@
 param(
     [string]$ServerUrl = "https://tt.greenleafpacific.com",
-    [string]$ApiKey = "",
+    [string]$ApiKey = "1a19eea7df861cffb38f18c1c6829805c657f49a5c8e56cf",
     [int]$LookbackMinutes = 10
 )
 
@@ -63,21 +63,11 @@ if (-not (Test-ActivityWatch)) {
     exit 1
 }
 
-$defaultDeviceId = $env:COMPUTERNAME.ToLower()
-$defaultDeviceLabel = $env:COMPUTERNAME
+$defaultDeviceId = $env:COMPUTERNAME
 
-$deviceLabel = Read-Host "How should this PC appear in the dashboard? [`"$defaultDeviceLabel`"]"
-if ([string]::IsNullOrWhiteSpace($deviceLabel)) {
-    $deviceLabel = $defaultDeviceLabel
-}
-
-$deviceId = Read-Host "Technical device ID [`"$defaultDeviceId`"]"
+$deviceId = Read-Host "Computer identifier in dashboard [`"$defaultDeviceId`"]"
 if ([string]::IsNullOrWhiteSpace($deviceId)) {
     $deviceId = $defaultDeviceId
-}
-
-if ([string]::IsNullOrWhiteSpace($ApiKey)) {
-    $ApiKey = Read-Host "Paste the ingest API key"
 }
 
 if ([string]::IsNullOrWhiteSpace($ApiKey)) {
@@ -95,7 +85,7 @@ if (-not (Test-Path $installScript)) {
 
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installScript `
     -DeviceId $deviceId `
-    -DeviceLabel $deviceLabel `
+    -DeviceLabel $deviceId `
     -ApiKey $ApiKey `
     -ServerUrl $ServerUrl `
     -LookbackMinutes $LookbackMinutes

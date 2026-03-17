@@ -192,13 +192,13 @@ td {
 }
 
 #aw-timeline .vis-item.aw-activity-active {
-  background: #67f447;
-  border-color: #4bd733;
+  background: #dcefdc;
+  border-color: #9fc39f;
 }
 
 #aw-timeline .vis-item.aw-activity-afk {
-  background: #d9d6cf;
-  border-color: #c4beb2;
+  background: #f0dddd;
+  border-color: #d3a9a9;
 }
 
 #aw-timeline .vis-item.aw-site {

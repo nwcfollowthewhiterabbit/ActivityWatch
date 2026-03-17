@@ -29,7 +29,7 @@
             <option value="">All devices</option>
             {% for device in devices %}
             <option value="{{ device.device_id }}" {% if selected_device_id == device.device_id %}selected{% endif %}>
-              {{ device.device_label }} ({{ device.device_id }})
+              {{ device.device_label }}
             </option>
             {% endfor %}
           </select>

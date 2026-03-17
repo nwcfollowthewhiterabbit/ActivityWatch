@@ -31,8 +31,7 @@
           <table>
             <thead>
               <tr>
-                <th>Label</th>
-                <th>Device ID</th>
+                <th>Identifier</th>
                 <th>Events</th>
                 <th>Last Seen</th>
                 <th>Merge</th>
@@ -42,7 +41,6 @@
               {% for device in group %}
               <tr>
                 <td>{{ device.device_label }}</td>
-                <td>{{ device.device_id }}</td>
                 <td>{{ event_counts.get(device.device_id, 0) }}</td>
                 <td>{{ device.last_seen_at | fiji_dt }}</td>
                 <td>
@@ -50,7 +48,7 @@
                     <select name="target_device_id">
                       {% for option in group %}
                       {% if option.device_id != device.device_id %}
-                      <option value="{{ option.device_id }}">{{ option.device_label }} ({{ option.device_id }})</option>
+                      <option value="{{ option.device_id }}">{{ option.device_label }}</option>
                       {% endif %}
                       {% endfor %}
                     </select>
@@ -70,21 +68,19 @@
       <table>
         <thead>
           <tr>
-            <th>Label</th>
-            <th>Device ID</th>
+            <th>Identifier</th>
             <th>Hostname</th>
             <th>Last User</th>
             <th>Last Seen (UTC)</th>
             <th>Events</th>
             <th>Timeline</th>
-            <th>Update Label</th>
+            <th>Rename</th>
           </tr>
         </thead>
         <tbody>
           {% for device in devices %}
           <tr>
             <td>{{ device.device_label }}</td>
-            <td>{{ device.device_id }}</td>
             <td>{{ device.hostname or "-" }}</td>
             <td>{{ device.last_username or "-" }}</td>
             <td>{{ device.last_seen_at | fiji_dt }}</td>

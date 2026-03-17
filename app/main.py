@@ -112,6 +112,15 @@ def event_fingerprint(payload: dict) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def normalize_device_identity(raw_event: dict) -> dict:
+    normalized = dict(raw_event)
+    device_id = (normalized.get("device_id") or normalized.get("device_label") or "").strip()
+    device_label = (normalized.get("device_label") or device_id).strip()
+    normalized["device_id"] = device_id
+    normalized["device_label"] = device_label
+    return normalized
+
+
 def looks_like_event(value: object) -> bool:
     if not isinstance(value, dict):
         return False
@@ -223,6 +232,36 @@ def timeline_tooltip(title: str, start: datetime, end: datetime, details: list[s
     if details:
         parts.extend(details)
     return "<br>".join(parts)
+
+
+def merge_timeline_items(items: list[dict], merge_gap: timedelta = timedelta(seconds=5)) -> list[dict]:
+    if not items:
+        return []
+
+    sorted_items = sorted(items, key=lambda item: item["start_dt"])
+    merged = [sorted_items[0].copy()]
+
+    for item in sorted_items[1:]:
+        prev = merged[-1]
+        same_item = (
+            prev["group"] == item["group"]
+            and prev["content"] == item["content"]
+            and prev["className"] == item["className"]
+            and prev.get("merge_key") == item.get("merge_key")
+        )
+        close_enough = item["start_dt"] <= prev["end_dt"] + merge_gap
+        if same_item and close_enough:
+            prev["end_dt"] = max(prev["end_dt"], item["end_dt"])
+            prev["title"] = timeline_tooltip(
+                prev["content"],
+                prev["start_dt"],
+                prev["end_dt"],
+                prev.get("details"),
+            )
+            continue
+        merged.append(item.copy())
+
+    return merged
 
 
 templates.env.filters["fiji_dt"] = format_fiji_dt
@@ -469,6 +508,9 @@ def timeline_data(
         {"id": "apps", "content": "Apps"},
     ]
     items: list[dict] = []
+    activity_items: list[dict] = []
+    site_items: list[dict] = []
+    app_items: list[dict] = []
     first_event_start: datetime | None = None
     last_event_end: datetime | None = None
 
@@ -481,60 +523,107 @@ def timeline_data(
             first_event_start = clipped_start
         if last_event_end is None or clipped_end > last_event_end:
             last_event_end = clipped_end
-        base_id = f"e{index}"
         start_iso = clipped_start.astimezone(FIJI_TZ).isoformat()
         end_iso = clipped_end.astimezone(FIJI_TZ).isoformat()
 
-        items.append(
+        activity_items.append(
             {
-                "id": f"{base_id}-activity",
+                "id": f"e{index}-activity",
                 "group": "activity",
                 "content": "afk" if event.is_afk else "not-afk",
-                "start": start_iso,
-                "end": end_iso,
+                "start_dt": clipped_start.astimezone(FIJI_TZ),
+                "end_dt": clipped_end.astimezone(FIJI_TZ),
                 "title": timeline_tooltip(
                     "AFK" if event.is_afk else "Active",
                     clipped_start,
                     clipped_end,
                     [f"User: {event.username}", f"Source: {event.source or '-'}"],
                 ),
+                "details": [f"User: {event.username}", f"Source: {event.source or '-'}"],
+                "merge_key": "afk" if event.is_afk else "not-afk",
                 "className": "aw-item aw-activity-afk" if event.is_afk else "aw-item aw-activity-active",
             }
         )
 
         if event.url:
-            items.append(
+            domain = short_domain(event.url)
+            site_items.append(
                 {
-                    "id": f"{base_id}-site",
+                    "id": f"e{index}-site",
                     "group": "sites",
-                    "content": short_domain(event.url),
-                    "start": start_iso,
-                    "end": end_iso,
+                    "content": domain,
+                    "start_dt": clipped_start.astimezone(FIJI_TZ),
+                    "end_dt": clipped_end.astimezone(FIJI_TZ),
                     "title": timeline_tooltip(
-                        short_domain(event.url),
+                        domain,
                         clipped_start,
                         clipped_end,
                         [event.url],
                     ),
+                    "details": [event.url],
+                    "merge_key": domain.lower(),
                     "className": "aw-item aw-site",
                 }
             )
 
-        app_label = (event.window_title or event.app or "Unknown").strip()
-        items.append(
+        app_name = (event.app or event.window_title or "Unknown").strip()
+        app_display = app_name.removesuffix(".exe")[:90]
+        window_label = (event.window_title or app_display or "Unknown").strip()
+        app_items.append(
             {
-                "id": f"{base_id}-app",
+                "id": f"e{index}-app",
                 "group": "apps",
-                "content": app_label[:90],
-                "start": start_iso,
-                "end": end_iso,
+                "content": app_display,
+                "start_dt": clipped_start.astimezone(FIJI_TZ),
+                "end_dt": clipped_end.astimezone(FIJI_TZ),
                 "title": timeline_tooltip(
-                    event.app or "Unknown",
+                    app_display or "Unknown",
                     clipped_start,
                     clipped_end,
-                    [app_label, f"User: {event.username}"],
+                    [window_label, f"User: {event.username}"],
                 ),
+                "details": [window_label, f"User: {event.username}"],
+                "merge_key": app_display.lower(),
                 "className": "aw-item aw-app",
+            }
+        )
+
+    for merged_index, activity_item in enumerate(merge_timeline_items(activity_items)):
+        items.append(
+            {
+                "id": f"merged-activity-{merged_index}",
+                "group": "activity",
+                "content": activity_item["content"],
+                "start": activity_item["start_dt"].isoformat(),
+                "end": activity_item["end_dt"].isoformat(),
+                "title": activity_item["title"],
+                "className": activity_item["className"],
+            }
+        )
+
+    for merged_index, site_item in enumerate(merge_timeline_items(site_items)):
+        items.append(
+            {
+                "id": f"merged-site-{merged_index}",
+                "group": "sites",
+                "content": site_item["content"],
+                "start": site_item["start_dt"].isoformat(),
+                "end": site_item["end_dt"].isoformat(),
+                "title": site_item["title"],
+                "className": site_item["className"],
+            }
+        )
+
+    for merged_index, app_item in enumerate(merge_timeline_items(app_items)):
+        items.append(
+            {
+                "id": f"merged-app-{merged_index}",
+                "group": "apps",
+                "content": app_item["content"],
+                "start": app_item["start_dt"].isoformat(),
+                "end": app_item["end_dt"].isoformat(),
+                "title": app_item["title"],
+                "className": app_item["className"],
             }
         )
 
@@ -707,9 +796,9 @@ async def ingest_events(request: Request, db: Session = Depends(get_db), x_api_k
     touched_devices: dict[str, Device] = {}
 
     for raw_event in events:
+        raw_event = normalize_device_identity(raw_event)
         required = [
             "device_id",
-            "device_label",
             "hostname",
             "username",
             "timestamp_start",
@@ -717,7 +806,7 @@ async def ingest_events(request: Request, db: Session = Depends(get_db), x_api_k
             "is_afk",
             "source",
         ]
-        missing = [field for field in required if field not in raw_event]
+        missing = [field for field in required if field not in raw_event or raw_event.get(field) in (None, "")]
         if missing:
             logger.warning("Ingest rejected: missing fields %s in event keys=%s", missing, sorted(raw_event.keys()))
             raise HTTPException(status_code=422, detail=f"Missing fields: {', '.join(missing)}")
