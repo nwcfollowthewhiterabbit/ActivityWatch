@@ -215,6 +215,16 @@ def short_domain(value: str | None) -> str:
     return parsed.netloc or value
 
 
+def timeline_tooltip(title: str, start: datetime, end: datetime, details: list[str] | None = None) -> str:
+    parts = [
+        f"<strong>{title}</strong>",
+        f"{format_fiji_dt(start)} - {format_fiji_dt(end)}",
+    ]
+    if details:
+        parts.extend(details)
+    return "<br>".join(parts)
+
+
 templates.env.filters["fiji_dt"] = format_fiji_dt
 templates.env.filters["fiji_time"] = format_fiji_time
 
@@ -417,11 +427,120 @@ def timeline_page(
             "selected_device_id": selected_device_id,
             "selected_day": str(selected_day),
             "display_timezone": "Pacific/Fiji",
+            "selected_device": selected_device,
             "timeline_rows": timeline_rows,
             "hour_markers": hour_markers,
-            "selected_device": selected_device,
         },
     )
+
+
+@app.get("/api/v1/timeline")
+def timeline_data(
+    request: Request,
+    device_id: str,
+    day: str | None = None,
+    db: Session = Depends(get_db),
+):
+    require_admin(request)
+
+    selected_day = datetime.fromisoformat(day).date() if day else datetime.now(FIJI_TZ).date()
+    local_start = datetime.combine(selected_day, datetime.min.time(), tzinfo=FIJI_TZ)
+    local_end = local_start + timedelta(days=1)
+    start_utc = local_start.astimezone(timezone.utc)
+    end_utc = local_end.astimezone(timezone.utc)
+
+    events = (
+        db.execute(
+            select(ActivityEvent)
+            .where(
+                ActivityEvent.device_id == device_id,
+                ActivityEvent.timestamp_end > start_utc,
+                ActivityEvent.timestamp_start < end_utc,
+            )
+            .order_by(ActivityEvent.timestamp_start)
+        )
+        .scalars()
+        .all()
+    )
+
+    groups = [
+        {"id": "activity", "content": "Activity"},
+        {"id": "sites", "content": "Sites"},
+        {"id": "apps", "content": "Apps"},
+    ]
+    items: list[dict] = []
+
+    for index, event in enumerate(events):
+        bounded = clamp_event(event, start_utc, end_utc)
+        if not bounded:
+            continue
+        clipped_start, clipped_end = bounded
+        base_id = f"e{index}"
+        start_iso = clipped_start.astimezone(FIJI_TZ).isoformat()
+        end_iso = clipped_end.astimezone(FIJI_TZ).isoformat()
+
+        items.append(
+            {
+                "id": f"{base_id}-activity",
+                "group": "activity",
+                "content": "afk" if event.is_afk else "not-afk",
+                "start": start_iso,
+                "end": end_iso,
+                "title": timeline_tooltip(
+                    "AFK" if event.is_afk else "Active",
+                    clipped_start,
+                    clipped_end,
+                    [f"User: {event.username}", f"Source: {event.source or '-'}"],
+                ),
+                "className": "aw-item aw-activity-afk" if event.is_afk else "aw-item aw-activity-active",
+            }
+        )
+
+        if event.url:
+            items.append(
+                {
+                    "id": f"{base_id}-site",
+                    "group": "sites",
+                    "content": short_domain(event.url),
+                    "start": start_iso,
+                    "end": end_iso,
+                    "title": timeline_tooltip(
+                        short_domain(event.url),
+                        clipped_start,
+                        clipped_end,
+                        [event.url],
+                    ),
+                    "className": "aw-item aw-site",
+                }
+            )
+
+        app_label = (event.window_title or event.app or "Unknown").strip()
+        items.append(
+            {
+                "id": f"{base_id}-app",
+                "group": "apps",
+                "content": app_label[:90],
+                "start": start_iso,
+                "end": end_iso,
+                "title": timeline_tooltip(
+                    event.app or "Unknown",
+                    clipped_start,
+                    clipped_end,
+                    [app_label, f"User: {event.username}"],
+                ),
+                "className": "aw-item aw-app",
+            }
+        )
+
+    return {
+        "groups": groups,
+        "items": items,
+        "window": {
+            "start": local_start.isoformat(),
+            "end": local_end.isoformat(),
+        },
+        "display_timezone": "Pacific/Fiji",
+    }
 
 
 @app.get("/devices", response_class=HTMLResponse)
