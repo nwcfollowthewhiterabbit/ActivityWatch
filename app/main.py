@@ -469,12 +469,18 @@ def timeline_data(
         {"id": "apps", "content": "Apps"},
     ]
     items: list[dict] = []
+    first_event_start: datetime | None = None
+    last_event_end: datetime | None = None
 
     for index, event in enumerate(events):
         bounded = clamp_event(event, start_utc, end_utc)
         if not bounded:
             continue
         clipped_start, clipped_end = bounded
+        if first_event_start is None or clipped_start < first_event_start:
+            first_event_start = clipped_start
+        if last_event_end is None or clipped_end > last_event_end:
+            last_event_end = clipped_end
         base_id = f"e{index}"
         start_iso = clipped_start.astimezone(FIJI_TZ).isoformat()
         end_iso = clipped_end.astimezone(FIJI_TZ).isoformat()
@@ -532,6 +538,24 @@ def timeline_data(
             }
         )
 
+    focus_start = local_start
+    focus_end = local_end
+    if first_event_start and last_event_end:
+        first_local = first_event_start.astimezone(FIJI_TZ)
+        last_local = last_event_end.astimezone(FIJI_TZ)
+        event_span = max(last_local - first_local, timedelta(minutes=10))
+        padding = min(max(event_span * 0.2, timedelta(minutes=10)), timedelta(minutes=45))
+        focus_start = max(local_start, first_local - padding)
+        focus_end = min(local_end, last_local + padding)
+
+        # Keep at least a narrow readable range so item labels have room to render.
+        minimum_focus_span = timedelta(minutes=45)
+        if focus_end - focus_start < minimum_focus_span:
+            midpoint = focus_start + ((focus_end - focus_start) / 2)
+            half_span = minimum_focus_span / 2
+            focus_start = max(local_start, midpoint - half_span)
+            focus_end = min(local_end, midpoint + half_span)
+
     return {
         "groups": groups,
         "items": items,
@@ -539,6 +563,11 @@ def timeline_data(
             "start": local_start.isoformat(),
             "end": local_end.isoformat(),
         },
+        "focus_window": {
+            "start": focus_start.isoformat(),
+            "end": focus_end.isoformat(),
+        },
+        "has_items": bool(items),
         "display_timezone": "Pacific/Fiji",
     }
 

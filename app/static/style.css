@@ -213,6 +213,10 @@ td {
 
 #aw-timeline .vis-item .vis-item-content {
   padding: 4px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
 }
 
 @media (max-width: 720px) {

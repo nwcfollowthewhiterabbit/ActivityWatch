@@ -33,20 +33,24 @@ window.CompanyMonitorTimeline = (() => {
       const { TimelineCtor, DataSetCtor } = visLib;
       const groupsData = new DataSetCtor(payload.groups || []);
       const itemsData = new DataSetCtor(payload.items || []);
+      const focusWindow = payload.focus_window || payload.window;
 
       container.innerHTML = "";
 
       const options = {
         stack: false,
         verticalScroll: true,
-        zoomMin: 1000 * 60 * 10,
+        zoomMin: 1000 * 60,
         zoomMax: 1000 * 60 * 60 * 24 * 31,
-        start: payload.window.start,
-        end: payload.window.end,
         min: payload.window.start,
         max: payload.window.end,
+        start: focusWindow?.start || payload.window.start,
+        end: focusWindow?.end || payload.window.end,
         orientation: { axis: "top" },
         showCurrentTime: false,
+        moveable: true,
+        zoomable: true,
+        horizontalScroll: true,
         tooltip: {
           followMouse: true,
           overflowMethod: "cap",
@@ -55,9 +59,24 @@ window.CompanyMonitorTimeline = (() => {
           item: 10,
           axis: 8,
         },
+        format: {
+          minorLabels: {
+            minute: "HH:mm",
+            hour: "HH:mm",
+          },
+          majorLabels: {
+            minute: "ddd D MMM",
+            hour: "ddd D MMM",
+            weekday: "ddd D MMM",
+            day: "ddd D MMM",
+          },
+        },
+        editable: false,
       };
-
-      new TimelineCtor(container, itemsData, groupsData, options);
+      const timeline = new TimelineCtor(container, itemsData, groupsData, options);
+      if (payload.has_items && focusWindow?.start && focusWindow?.end) {
+        timeline.setWindow(focusWindow.start, focusWindow.end, { animation: false });
+      }
     } catch (error) {
       container.innerHTML = `<div class="alert">Timeline failed to load: ${error.message}</div>`;
     }
