@@ -1,7 +1,9 @@
 import hashlib
+import hmac
 import json
 import logging
 import os
+import secrets
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
@@ -70,6 +72,17 @@ class ActivityEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+class AdminUser(Base):
+    __tablename__ = "admin_users"
+
+    username: Mapped[str] = mapped_column(String(255), primary_key=True)
+    password_hash: Mapped[str] = mapped_column(String(512), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+    )
+
+
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
@@ -85,6 +98,31 @@ def is_authenticated(request: Request) -> bool:
 def require_admin(request: Request) -> None:
     if not is_authenticated(request):
         raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
+
+
+def hash_password(password: str, salt: str | None = None) -> str:
+    salt = salt or secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 200_000).hex()
+    return f"pbkdf2_sha256${salt}${digest}"
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    try:
+        algorithm, salt, expected = stored_hash.split("$", 2)
+    except ValueError:
+        return False
+    if algorithm != "pbkdf2_sha256":
+        return False
+    calculated = hash_password(password, salt).split("$", 2)[2]
+    return hmac.compare_digest(calculated, expected)
+
+
+def ensure_admin_user(db: Session, username: str, password: str) -> None:
+    user = db.get(AdminUser, username)
+    if user:
+        return
+    db.add(AdminUser(username=username, password_hash=hash_password(password)))
+    db.commit()
 
 
 def parse_dt(value: str) -> datetime:
@@ -164,6 +202,8 @@ def extract_events(payload: object) -> list[dict]:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
+    with SessionLocal() as db:
+        ensure_admin_user(db, ADMIN_USERNAME, ADMIN_PASSWORD)
     yield
 
 
@@ -744,9 +784,11 @@ def login_page(request: Request):
 
 
 @app.post("/login", response_class=HTMLResponse)
-def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+def login(request: Request, username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+    user = db.get(AdminUser, username)
+    if user and verify_password(password, user.password_hash):
         request.session["authenticated"] = True
+        request.session["username"] = username
         return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
     return templates.TemplateResponse(request, "login.html", {"request": request, "error": "Invalid credentials"}, status_code=401)
 
@@ -794,6 +836,7 @@ async def ingest_events(request: Request, db: Session = Depends(get_db), x_api_k
     inserted = 0
     duplicated = 0
     touched_devices: dict[str, Device] = {}
+    seen_fingerprints: set[str] = set()
 
     for raw_event in events:
         raw_event = normalize_device_identity(raw_event)
@@ -822,6 +865,10 @@ async def ingest_events(request: Request, db: Session = Depends(get_db), x_api_k
             raise HTTPException(status_code=422, detail="timestamp_end must be greater than or equal to timestamp_start")
 
         fingerprint = event_fingerprint(raw_event)
+        if fingerprint in seen_fingerprints:
+            duplicated += 1
+            continue
+        seen_fingerprints.add(fingerprint)
         exists = db.execute(select(ActivityEvent.id).where(ActivityEvent.fingerprint == fingerprint)).scalar_one_or_none()
         if exists:
             duplicated += 1
