@@ -11,7 +11,7 @@
       <div>
         <h1>Devices</h1>
         <p class="muted">Registered endpoints and latest contact status</p>
-        <p class="muted">Displayed times: {{ display_timezone }}</p>
+        <p class="muted">All times shown in {{ display_timezone }}</p>
       </div>
       <div class="topbar-actions">
         <a href="/timeline">Timeline</a>
@@ -24,10 +24,10 @@
       {% if duplicate_groups %}
       <div class="stack">
         <h2>Possible Duplicates</h2>
-        <p class="muted">These devices share the same hostname and are good candidates for merging.</p>
+        <p class="muted">These installs may represent the same workstation and are good candidates for merging.</p>
         {% for group in duplicate_groups %}
         <div class="card subtle">
-          <h3>{{ group[0].hostname }}</h3>
+          <h3>Review merge candidates</h3>
           <table>
             <thead>
               <tr>
@@ -69,27 +69,35 @@
         <thead>
           <tr>
             <th>Identifier</th>
-            <th>Hostname</th>
-            <th>Last User</th>
-            <th>Last Seen (UTC)</th>
+            <th>Last Seen (Fiji)</th>
             <th>Events</th>
             <th>Timeline</th>
+            <th>Detail</th>
             <th>Rename</th>
+            <th>Delete</th>
           </tr>
         </thead>
         <tbody>
           {% for device in devices %}
           <tr>
             <td>{{ device.device_label }}</td>
-            <td>{{ device.hostname or "-" }}</td>
-            <td>{{ device.last_username or "-" }}</td>
             <td>{{ device.last_seen_at | fiji_dt }}</td>
             <td>{{ event_counts.get(device.device_id, 0) }}</td>
             <td><a href="/timeline?device_id={{ device.device_id }}">Open</a></td>
+            <td><a href="/devices/{{ device.device_id }}/detail">Open</a></td>
             <td>
               <form method="post" action="/devices/{{ device.device_id }}/label" class="inline-form">
                 <input type="text" name="device_label" value="{{ device.device_label }}" required>
                 <button type="submit">Save</button>
+              </form>
+            </td>
+            <td>
+              <form
+                method="post"
+                action="/devices/{{ device.device_id }}/delete"
+                onsubmit="return confirm({{ ('Delete ' ~ device.device_label ~ ' and all related events?') | tojson }});"
+              >
+                <button type="submit" class="danger">Delete</button>
               </form>
             </td>
           </tr>

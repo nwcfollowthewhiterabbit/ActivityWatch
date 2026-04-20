@@ -12,11 +12,12 @@
       <div>
         <h1>Timeline</h1>
         <p class="muted">Detailed device activity view</p>
-        <p class="muted">Displayed times: {{ display_timezone }}</p>
+        <p class="muted">All times shown in {{ display_timezone }}</p>
       </div>
       <div class="topbar-actions">
         <a href="/">Dashboard</a>
         <a href="/devices">Devices</a>
+        {% if selected_device_id %}<a href="/devices/{{ selected_device_id }}/detail">Device Detail</a>{% endif %}
         <form method="post" action="/logout"><button type="submit" class="secondary">Logout</button></form>
       </div>
     </header>
@@ -44,7 +45,7 @@
         <div>
           <h2>{{ selected_device.device_label if selected_device else "No device selected" }}</h2>
           {% if selected_device %}
-          <p class="muted">{{ selected_device.hostname or "-" }} | {{ selected_day }}</p>
+          <p class="muted">{{ selected_day }}</p>
           {% endif %}
         </div>
       </div>

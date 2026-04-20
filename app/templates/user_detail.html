@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ display_name }} Detail</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>{{ display_name }}</h1>
+        <p class="muted">Detailed employee view with daily AFK, corporate-site time, and deviations from baseline</p>
+        <p class="muted">All times shown in {{ display_timezone }}</p>
+      </div>
+      <div class="topbar-actions">
+        <a href="/">Dashboard</a>
+        <a href="/devices">Devices</a>
+        <form method="post" action="/logout"><button type="submit" class="secondary">Logout</button></form>
+      </div>
+    </header>
+
+    <section class="hero card">
+      <div class="hero-copy">
+        <p class="eyebrow">Employee Detail</p>
+        <h2>Review day-by-day AFK behavior, corporate-site engagement, and customized thresholds.</h2>
+      </div>
+      <form method="get" action="/users/{{ username }}" class="filters hero-filters">
+        <label>From <input type="date" name="from_date" value="{{ from_date }}"></label>
+        <label>To <input type="date" name="to_date" value="{{ to_date }}"></label>
+        <label>Device
+          <select name="device_id">
+            <option value="">All employee devices</option>
+            {% for id, label in user_devices %}
+            <option value="{{ id }}" {% if selected_device_id == id %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit">Apply</button>
+      </form>
+    </section>
+
+    <section class="grid metrics metrics-operator">
+      <article class="card metric-card"><p class="metric-label">Active</p><p class="big">{{ metrics.active_seconds | hours }} h</p></article>
+      <article class="card metric-card"><p class="metric-label">AFK</p><p class="big">{{ metrics.afk_seconds | hours }} h</p></article>
+      <article class="card metric-card"><p class="metric-label">AFK sessions</p><p class="big">{{ metrics.afk_sessions }}</p></article>
+      <article class="card metric-card"><p class="metric-label">Longest AFK</p><p class="big">{{ metrics.longest_afk_seconds | minutes }} m</p></article>
+      <article class="card metric-card"><p class="metric-label">Corporate sites</p><p class="big">{{ metrics.corporate_seconds | hours }} h</p></article>
+      <article class="card metric-card"><p class="metric-label">Flagged days</p><p class="big">{{ metrics.flagged_days }}</p></article>
+    </section>
+
+    <section class="grid two">
+      <article class="card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Rules</p>
+            <h2>Custom Thresholds</h2>
+          </div>
+        </div>
+        <form method="post" action="/users/{{ username }}/rules" class="rule-grid">
+          <label>Max single AFK, min
+            <input type="number" min="1" name="max_single_afk_minutes" value="{{ rule_values.max_single_afk_minutes }}">
+          </label>
+          <label>Max AFK per day, min
+            <input type="number" min="1" name="max_daily_afk_minutes" value="{{ rule_values.max_daily_afk_minutes }}">
+          </label>
+          <label>Max AFK sessions/day
+            <input type="number" min="1" name="max_afk_sessions_per_day" value="{{ rule_values.max_afk_sessions_per_day }}">
+          </label>
+          <label>Min corporate-site time/day, min
+            <input type="number" min="0" name="min_corporate_minutes_per_day" value="{{ rule_values.min_corporate_minutes_per_day }}">
+          </label>
+          <label>Anomaly threshold, %
+            <input type="number" min="5" name="anomaly_pct_threshold" value="{{ rule_values.anomaly_pct_threshold }}">
+          </label>
+          <button type="submit">Save Rules</button>
+        </form>
+      </article>
+
+      <article class="card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Corporate Sites</p>
+            <h2>Tracked Domains</h2>
+          </div>
+        </div>
+        <div class="stack compact">
+          {% for domain in corporate_domains %}
+          <div class="domain-card">
+            <strong>{{ domain }}</strong>
+            <p class="muted">Counted only during non-AFK time.</p>
+          </div>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+
+    <section class="card">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Daily Summary</p>
+          <h2>Per-Day AFK and Corporate-Site Dynamics</h2>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Active</th>
+            <th>AFK</th>
+            <th>AFK Sessions</th>
+            <th>Longest AFK</th>
+            <th>Corporate</th>
+            <th>Trend</th>
+            <th>Flags</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in day_rows %}
+          <tr>
+            <td><strong>{{ row.date }}</strong></td>
+            <td>
+              {{ row.active_seconds | hours }} h
+              <div class="mini-bar"><span class="mini-bar-fill active" style="width: {{ row.active_bar_pct }}%"></span></div>
+            </td>
+            <td>
+              {{ row.afk_seconds | hours }} h
+              <div class="mini-bar"><span class="mini-bar-fill afk" style="width: {{ row.afk_bar_pct }}%"></span></div>
+            </td>
+            <td>{{ row.afk_sessions }}</td>
+            <td>{{ row.longest_afk_seconds | minutes }} m</td>
+            <td>
+              {{ row.corporate_seconds | hours }} h
+              <div class="mini-bar"><span class="mini-bar-fill corporate" style="width: {{ row.corporate_bar_pct }}%"></span></div>
+              {% if row.top_corporate_domains %}
+              <div class="muted compact-text">
+                {% for domain, seconds in row.top_corporate_domains %}
+                <span>{{ domain }}: {{ seconds | hours }} h</span>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </td>
+            <td class="trend-cell">
+              <span class="muted">Active {{ row.active_delta_pct | round(0) }}%</span><br>
+              <span class="muted">AFK {{ row.afk_delta_pct | round(0) }}%</span>
+            </td>
+            <td>
+              {% if row.flags %}
+                {% for flag in row.flags %}
+                <span class="pill danger">{{ flag }}</span>
+                {% endfor %}
+              {% else %}
+                <span class="pill ok">Normal</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="grid two">
+      <article class="card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Latest Day</p>
+            <h2>Snapshot</h2>
+          </div>
+        </div>
+        {% if latest_row %}
+        <div class="snapshot-grid">
+          <div><strong>Day</strong><p>{{ latest_row.date }}</p></div>
+          <div><strong>Active</strong><p>{{ latest_row.active_seconds | hours }} h</p></div>
+          <div><strong>AFK</strong><p>{{ latest_row.afk_seconds | hours }} h</p></div>
+          <div><strong>Corporate</strong><p>{{ latest_row.corporate_seconds | hours }} h</p></div>
+        </div>
+        {% else %}
+        <p class="muted">No data in the selected range.</p>
+        {% endif %}
+      </article>
+
+      <article class="card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Recent Events</p>
+            <h2>Activity Feed</h2>
+          </div>
+        </div>
+        <table>
+          <thead><tr><th>Time</th><th>Device</th><th>Status</th><th>App</th><th>URL</th></tr></thead>
+          <tbody>
+            {% for event in recent_events %}
+            <tr>
+              <td>{{ event.timestamp_start | fiji_dt }}</td>
+              <td><a href="/devices/{{ event.device_id }}/detail">{{ event.device_label }}</a></td>
+              <td>{% if event.is_afk %}<span class="pill danger">AFK</span>{% else %}<span class="pill ok">Active</span>{% endif %}</td>
+              <td>{{ event.app or "Unknown" }}</td>
+              <td class="wrap">{{ event.url or "-" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </article>
+    </section>
+  </body>
+</html>

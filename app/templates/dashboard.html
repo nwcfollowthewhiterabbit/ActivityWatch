@@ -9,9 +9,9 @@
   <body>
     <header class="topbar">
       <div>
-        <h1>Company Monitor</h1>
-        <p class="muted">Centralized employee activity dashboard</p>
-        <p class="muted">Displayed times: {{ display_timezone }}</p>
+        <h1>Operations Dashboard</h1>
+        <p class="muted">Fast operator view for the previous closed Fiji workday: activity, AFK patterns, corporate-site coverage, and outliers</p>
+        <p class="muted">All times shown in {{ display_timezone }}</p>
       </div>
       <div class="topbar-actions">
         <a href="/timeline{% if selected_device_id %}?device_id={{ selected_device_id }}{% endif %}">Timeline</a>
@@ -20,8 +20,17 @@
       </div>
     </header>
 
-    <section class="card">
-      <form method="get" action="/" class="filters">
+    <section class="hero card">
+      <div class="hero-copy">
+        <p class="eyebrow">Operator Screen</p>
+        <h2>Catch AFK spikes, low corporate-site time, and unusual day patterns quickly.</h2>
+        <p class="muted">
+          Current dashboard range:
+          <strong>{{ from_date }}</strong>{% if to_date != from_date %} to <strong>{{ to_date }}</strong>{% endif %}
+          ({{ display_timezone }})
+        </p>
+      </div>
+      <form method="get" action="/" class="filters hero-filters">
         <label>From <input type="date" name="from_date" value="{{ from_date }}"></label>
         <label>To <input type="date" name="to_date" value="{{ to_date }}"></label>
         <label>Device
@@ -34,28 +43,190 @@
             {% endfor %}
           </select>
         </label>
-        <label>User
-          <select name="username">
-            <option value="">All users</option>
-            {% for user in usernames %}
-            <option value="{{ user }}" {% if selected_username == user %}selected{% endif %}>{{ user }}</option>
-            {% endfor %}
-          </select>
-        </label>
         <button type="submit">Apply</button>
       </form>
     </section>
 
-    <section class="grid metrics">
-      <article class="card"><h2>Total time</h2><p class="big">{{ metrics.total_hours }} h</p></article>
-      <article class="card"><h2>Active time</h2><p class="big">{{ metrics.active_hours }} h</p></article>
-      <article class="card"><h2>AFK time</h2><p class="big">{{ metrics.afk_hours }} h</p></article>
-      <article class="card"><h2>Events</h2><p class="big">{{ metrics.events_count }}</p></article>
+    <section class="grid metrics metrics-operator">
+      <article class="card metric-card">
+        <p class="metric-label">Tracked users</p>
+        <p class="muted">Selected dashboard range</p>
+        <p class="big">{{ metrics.tracked_users }}</p>
+      </article>
+      <article class="card metric-card">
+        <p class="metric-label">Active time</p>
+        <p class="muted">Selected dashboard range</p>
+        <p class="big">{{ metrics.active_hours }} h</p>
+      </article>
+      <article class="card metric-card">
+        <p class="metric-label">AFK time</p>
+        <p class="muted">Selected dashboard range</p>
+        <p class="big">{{ metrics.afk_hours }} h</p>
+      </article>
+      <article class="card metric-card">
+        <p class="metric-label">Corporate sites</p>
+        <p class="muted">Selected dashboard range</p>
+        <p class="big">{{ metrics.corporate_hours }} h</p>
+      </article>
+      <article class="card metric-card">
+        <p class="metric-label">Events</p>
+        <p class="muted">Selected dashboard range</p>
+        <p class="big">{{ metrics.events_count }}</p>
+      </article>
+    </section>
+
+    <section class="grid two">
+      <article class="card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Attention Queue</p>
+            <h2>Flagged People</h2>
+            <p class="muted">Flags triggered inside the selected dashboard range.</p>
+          </div>
+        </div>
+        <div class="stack">
+          {% for row in flagged_rows %}
+          <a class="spotlight-row" href="/devices/{{ row.device_id }}/detail?from_date={{ from_date }}&to_date={{ to_date }}">
+            <div>
+              <strong>{{ row.display_name }}</strong>
+            </div>
+            <div class="pill-row">
+              {% for flag in row.flags[:3] %}
+              <span class="pill danger">{{ flag }}</span>
+              {% endfor %}
+            </div>
+          </a>
+          {% else %}
+          <p class="muted">No obvious outliers in the selected period.</p>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Corporate Focus</p>
+            <h2>Tracked Corporate Domains</h2>
+            <p class="muted">Corporate time is counted only from non-AFK activity in the selected range.</p>
+          </div>
+        </div>
+        <div class="stack compact">
+          {% for domain in corporate_domains %}
+          <div class="domain-card">
+            <strong>{{ domain }}</strong>
+            <p class="muted">Included in non-AFK corporate-site time calculations.</p>
+          </div>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+
+    <section class="grid two">
+      <article class="card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Daily Trend</p>
+            <h2>Active vs AFK by Day</h2>
+            <p class="muted">Daily breakdown for the currently selected period.</p>
+          </div>
+        </div>
+        <div class="trend-list">
+          {% for row in daily_rows %}
+          <div class="trend-row">
+            <div class="trend-meta">
+              <strong>{{ row.date }}</strong>
+              <span class="muted">{{ row.active_seconds | hours }} h active / {{ row.afk_seconds | hours }} h AFK</span>
+            </div>
+            <div class="stacked-bar">
+              <span class="bar-segment active" style="width: {{ row.active_pct }}%"></span>
+              <span class="bar-segment afk" style="width: {{ row.afk_pct }}%"></span>
+            </div>
+            <div class="trend-side muted">
+              Corporate {{ row.corporate_seconds | hours }} h
+            </div>
+          </div>
+          {% else %}
+          <p class="muted">No events found for the selected period.</p>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Live Feed</p>
+            <h2>Latest Workstation Status</h2>
+            <p class="muted">One latest status row per workstation inside the selected dashboard range.</p>
+          </div>
+        </div>
+        <table>
+          <thead><tr><th>Time</th><th>Workstation</th><th>State</th><th>App</th><th>Detail</th></tr></thead>
+          <tbody>
+            {% for event in recent_statuses %}
+            <tr>
+              <td>{{ event.timestamp_start | fiji_dt }}</td>
+              <td><a href="/devices/{{ event.device_id }}/detail">{{ event.device_label }}</a></td>
+              <td>{% if event.is_afk %}<span class="pill danger">AFK</span>{% else %}<span class="pill ok">Active</span>{% endif %}</td>
+              <td>{{ event.app or "Unknown" }}</td>
+              <td><a href="/devices/{{ event.device_id }}/detail?from_date={{ from_date }}&to_date={{ to_date }}">Open</a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </article>
+    </section>
+
+    <section class="card">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">People</p>
+          <h2>Team Activity Overview</h2>
+          <p class="muted">One row per workstation for the selected dashboard range.</p>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Active</th>
+            <th>AFK</th>
+            <th>AFK Sessions</th>
+            <th>Corporate</th>
+            <th>Latest Status</th>
+            <th>Detail</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in operator_rows %}
+          <tr>
+            <td>
+              <strong>{{ row.display_name }}</strong><br>
+              <span class="muted">AFK ratio {{ row.afk_ratio }}%</span>
+            </td>
+            <td>{{ row.active_seconds | hours }} h</td>
+            <td>{{ row.afk_seconds | hours }} h</td>
+            <td>{{ row.afk_sessions }}</td>
+            <td>{{ row.corporate_seconds | hours }} h</td>
+            <td>
+              {% if row.flags %}
+                {% for flag in row.flags[:2] %}
+                <span class="pill danger">{{ flag }}</span>
+                {% endfor %}
+              {% else %}
+                <span class="pill ok">Stable</span>
+              {% endif %}
+            </td>
+            <td><a href="/devices/{{ row.device_id }}/detail?from_date={{ from_date }}&to_date={{ to_date }}">Open</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </section>
 
     <section class="grid two">
       <article class="card">
         <h2>Top Applications</h2>
+        <p class="muted">Ranked by non-AFK time within the selected dashboard range.</p>
         <table>
           <thead><tr><th>Application</th><th>Hours</th></tr></thead>
           <tbody>
@@ -68,46 +239,12 @@
 
       <article class="card">
         <h2>Top Sites</h2>
+        <p class="muted">Ranked by non-AFK browsing time within the selected dashboard range.</p>
         <table>
           <thead><tr><th>URL</th><th>Hours</th></tr></thead>
           <tbody>
             {% for url, seconds in top_sites %}
             <tr><td class="wrap">{{ url }}</td><td>{{ (seconds / 3600) | round(2) }}</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </article>
-    </section>
-
-    <section class="grid two">
-      <article class="card">
-        <h2>Daily Summary</h2>
-        <table>
-          <thead><tr><th>Date</th><th>Active h</th><th>AFK h</th></tr></thead>
-          <tbody>
-            {% for day, values in daily %}
-            <tr>
-              <td>{{ day }}</td>
-              <td>{{ (values.active / 3600) | round(2) }}</td>
-              <td>{{ (values.afk / 3600) | round(2) }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </article>
-
-      <article class="card">
-        <h2>Recent Events</h2>
-        <table>
-          <thead><tr><th>Time</th><th>User</th><th>Device</th><th>App</th></tr></thead>
-          <tbody>
-            {% for event in recent_events %}
-            <tr>
-              <td>{{ event.timestamp_start | fiji_dt }}</td>
-              <td>{{ event.username }}</td>
-              <td>{{ event.device_label }}</td>
-              <td>{{ event.app or "Unknown" }}</td>
-            </tr>
             {% endfor %}
           </tbody>
         </table>
